@@ -14,6 +14,9 @@ npm run build
 npm run release
 ```
 
+Android APK 与 Vela RPK 必须使用相同包名和签名证书。完整配置、转换及验证
+步骤见 [`docs/signing.md`](docs/signing.md)。
+
 ### 4. 代码规范化配置
 代码规范化可以帮助开发者在git commit前进行代码校验、格式化、commit信息校验
 

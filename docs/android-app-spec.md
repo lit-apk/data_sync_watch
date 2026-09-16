@@ -9,7 +9,7 @@ The two sides communicate over Xiaomi's `interconnect` / `xms-wearable` bridge.
 
 | Field            | Value                                                        |
 | ---------------- | ------------------------------------------------------------ |
-| applicationId    | `org.lighilit.watch_data_sync`                               |
+| applicationId    | `top.lighilit.watch_data_sync`                               |
 | App label        | `Data Sync`                                                  |
 | Language         | Kotlin                                                       |
 | minSdkVersion    | 24                                                           |
@@ -20,7 +20,7 @@ The two sides communicate over Xiaomi's `interconnect` / `xms-wearable` bridge.
 | SDK dependency   | `xms-wearable-lib_1.4_release.aar` (in `app/libs/`)          |
 
 > **Hard requirement:** `applicationId` MUST equal the watch quick app's
-> `manifest.json` `package` field (`org.lighilit.watch_data_sync`), and the APK
+> `manifest.json` `package` field (`top.lighilit.watch_data_sync`), and the APK
 > MUST be signed with the **same certificate** used to sign the watch `.rpk`.
 > See §6.
 
@@ -100,7 +100,7 @@ implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar", "*.a
 
 ```xml
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="org.lighilit.watch_data_sync">
+    package="top.lighilit.watch_data_sync">
   <application ... android:label="Data Sync">
     <activity android:name=".MainActivity" android:exported="true">
       <intent-filter>
@@ -120,7 +120,7 @@ implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar", "*.a
 ### 5.3 Controller (callback registry + messaging)
 
 ```kotlin
-package org.lighilit.watch_data_sync
+package top.lighilit.watch_data_sync
 
 import android.content.Context
 import com.xiaomi.xms.wearable.Wearable
@@ -212,13 +212,16 @@ class MainActivity : AppCompatActivity() {
 `interconnect` only works when the quick app and the Android APK share the same
 package name **and** signature:
 
-1. `manifest.json.package` == APK `applicationId` (`org.lighilit.watch_data_sync`).
+1. `manifest.json.package` == APK `applicationId` (`top.lighilit.watch_data_sync`).
 2. Sign the watch `.rpk` with the same certificate as the APK:
    - Convert the Android keystore/jks to `.pem` (private key + certificate) and
      place them under the quick app's `/sign/debug` and `/sign/release`.
    - Or use Xiaomi's online signature tool.
 3. A Xiaomi host bridge app must be installed on the phone and the watch paired:
    - `com.mi.health` (小米运动健康) or `com.xiaomi.wearable` (小米穿戴).
+
+See [`signing.md`](signing.md) for commands to create one keystore, configure the
+APK build, export its key and certificate for Vela, and verify both artifacts.
 
 ---
 
