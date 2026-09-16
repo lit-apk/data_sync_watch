@@ -1,0 +1,233 @@
+<template>
+  <div class="page">
+    <text class="header">Data Sync</text>
+    <text class="status">连接状态：{{ statusText }}</text>
+    <list class="list" onscrollbottom="handleScrollBottom">
+      <list-item class="item" type="empty" if="{{ messages.length === 0 }}">
+        <text class="empty-text">{{ emptyText }}</text>
+      </list-item>
+      <list-item class="item message" type="message" for="{{ messages }}">
+        <text class="message-text">{{ $item }}</text>
+      </list-item>
+      <list-item class="item" type="actions" if="{{ showActions }}">
+        <div class="actions-row">
+          <input
+            class="action-btn primary"
+            type="button"
+            value="{{ primaryLabel }}"
+            onclick="handlePrimary"
+          />
+          <input
+            class="action-btn secondary"
+            type="button"
+            value="{{ secondaryLabel }}"
+            onclick="handleSecondary"
+          />
+        </div>
+      </list-item>
+    </list>
+  </div>
+</template>
+
+<script>
+import interconnect from "@system.interconnect"
+
+export default {
+  private: {
+    conn: null,
+    messages: [],
+    showActions: false,
+    statusText: "未连接",
+    emptyText: "暂无消息，等待手机端发送…",
+    primaryLabel: "确定",
+    secondaryLabel: "取消",
+    actionPrimary: "confirm",
+    actionSecondary: "cancel"
+  },
+
+  onReady() {
+    this.setupInterconnect()
+  },
+
+  onShow() {
+    if (!this.conn) {
+      this.setupInterconnect()
+    } else {
+      this.refreshStatus()
+    }
+  },
+
+  setupInterconnect() {
+    const conn = interconnect.instance()
+    this.conn = conn
+
+    conn.onopen = (data) => {
+      const reconnected = data && data.isReconnected ? " (重连)" : ""
+      console.log(`[interconnect] onopen${reconnected}`)
+      this.statusText = "已连接"
+    }
+
+    conn.onclose = (data) => {
+      console.log(`[interconnect] onclose code=${data && data.code} data=${data && data.data}`)
+      this.statusText = "已断开"
+    }
+
+    conn.onerror = (data) => {
+      console.log(`[interconnect] onerror code=${data && data.code} data=${data && data.data}`)
+      this.statusText = "连接错误"
+    }
+
+    conn.onmessage = (res) => {
+      this.handleIncomingMessage(res)
+    }
+
+    this.refreshStatus()
+  },
+
+  refreshStatus() {
+    if (!this.conn) return
+    this.conn.getReadyState({
+      success: (res) => {
+        this.statusText = res && res.status === 1 ? "已连接" : "未连接"
+      },
+      fail: () => {
+        this.statusText = "未连接"
+      }
+    })
+  },
+
+  handleIncomingMessage(res) {
+    let raw = null
+    if (typeof res === "string") {
+      raw = res
+    } else if (res && typeof res.data === "string") {
+      raw = res.data
+    } else if (res && res.data !== undefined && res.data !== null) {
+      raw = JSON.stringify(res.data)
+    }
+
+    if (raw == null) {
+      return
+    }
+
+    console.log(`[interconnect] onmessage: ${raw}`)
+
+    let msg = null
+    try {
+      msg = JSON.parse(raw)
+    } catch (e) {
+      msg = null
+    }
+
+    if (msg && msg.type === "text" && typeof msg.content === "string") {
+      this.messages.push(msg.content)
+    } else {
+      this.messages.push(String(raw))
+    }
+  },
+
+  handleScrollBottom() {
+    this.showActions = true
+  },
+
+  handlePrimary() {
+    this.sendAction(this.actionPrimary)
+  },
+
+  handleSecondary() {
+    this.sendAction(this.actionSecondary)
+  },
+
+  sendAction(action) {
+    if (!this.conn) {
+      this.setupInterconnect()
+    }
+    this.conn.send({
+      data: {
+        type: "action",
+        action: action
+      },
+      success: () => {
+        console.log(`[interconnect] action "${action}" sent`)
+      },
+      fail: (res, code) => {
+        console.log(`[interconnect] action "${action}" send fail code=${code} data=${res && res.data}`)
+      }
+    })
+  }
+}
+</script>
+
+<style>
+.page {
+  flex: 1;
+  flex-direction: column;
+  padding: 30px;
+}
+
+.header {
+  font-size: 36px;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.status {
+  font-size: 22px;
+  text-align: center;
+  margin-bottom: 20px;
+  color: #888888;
+}
+
+.list {
+  flex: 1;
+  width: 100%;
+}
+
+.item {
+  width: 100%;
+  justify-content: center;
+}
+
+.message {
+  margin-bottom: 10px;
+  padding: 16px;
+  background-color: #1e1e1e;
+  border-radius: 10px;
+}
+
+.message-text {
+  font-size: 26px;
+  color: #ffffff;
+}
+
+.empty-text {
+  font-size: 26px;
+  color: #888888;
+  text-align: center;
+}
+
+.actions-row {
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 20px;
+}
+
+.action-btn {
+  width: 220px;
+  height: 80px;
+  border-radius: 40px;
+  font-size: 28px;
+  color: #ffffff;
+  text-align: center;
+}
+
+.primary {
+  background-color: #0faeff;
+}
+
+.secondary {
+  background-color: #dd4731;
+}
+</style>
