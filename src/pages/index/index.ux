@@ -17,7 +17,8 @@
 
     <scroll class="main-page" scroll-y="true" bounces="true" if="{{ !settingsOpen }}">
       <text class="header" if="{{ !connected }}">Data Sync</text>
-      <div class="{{ compactHeader ? 'status-row status-row-raised' : 'status-row' }}">
+      <div class="{{ compactHeader ? 'status-spacer compact' : 'status-spacer' }}"></div>
+      <div class="status-row">
         <input
           class="round-button back-button-small"
           type="button"
@@ -26,7 +27,12 @@
           onclick="returnToInitial"
         />
         <text class="status">{{ displayText ? readingName : '连接状态：' + statusText }}</text>
-        <input class="round-button settings-button" type="button" value="Aa" onclick="openSettings" />
+        <input
+          class="round-button settings-button"
+          type="button"
+          value="Aa"
+          onclick="openSettings"
+        />
       </div>
       <input
         class="detail-toggle"
@@ -334,7 +340,12 @@ export default {
   },
 
   handleReadingTap(e) {
-    if (!this.displayText || !e || e.clientY < 320) return
+    if (!this.displayText || !e) return
+    if (e.clientY <= 120) {
+      this.compactHeader = false
+      return
+    }
+    if (e.clientY < 320) return
     this.compactHeader = true
     const scroll = this.$element("contentScroll")
     if (scroll) {
@@ -531,9 +542,13 @@ export default {
   margin-bottom: 20px;
 }
 
-.status-row-raised {
-  transform: translateY(-27px);
-  margin-bottom: -27px;
+.status-spacer {
+  width: 100%;
+  height: 27px;
+}
+
+.status-spacer.compact {
+  height: 0;
 }
 
 .round-button {
@@ -548,12 +563,12 @@ export default {
 }
 
 .back-button-small {
-  margin-left: 36px;
+  margin-left: 56px;
   font-size: 34px;
 }
 
 .settings-button {
-  margin-right: 36px;
+  margin-right: 56px;
 }
 
 .content {
