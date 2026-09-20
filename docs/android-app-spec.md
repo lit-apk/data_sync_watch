@@ -217,6 +217,10 @@ package name **and** signature:
    - Convert the Android keystore/jks to `.pem` (private key + certificate) and
      place them under the quick app's `/sign/debug` and `/sign/release`.
    - Or use Xiaomi's online signature tool.
+   - The build already resolves certs from `./sign/debug` (debug) and
+     `./sign/release` (release); see `sign/README.md`. Placeholder debug certs are
+     committed there so the project builds, but they must be replaced with the
+     APK-matching cert for real interconnect.
 3. A Xiaomi host bridge app must be installed on the phone and the watch paired:
    - `com.mi.health` (小米运动健康) or `com.xiaomi.wearable` (小米穿戴).
 

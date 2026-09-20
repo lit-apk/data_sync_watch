@@ -1,41 +1,63 @@
 <template>
   <div class="page">
-    <text class="header" if="{{ !connected }}">Data Sync</text>
-    <text class="status">连接状态：{{ statusText }}</text>
-    <input
-      class="detail-toggle"
-      type="button"
-      if="{{ !connected }}"
-      value="{{ showDetail ? '隐藏详情' : '诊断详情' }}"
-      onclick="toggleDetail"
-    />
-    <div class="detail-panel" if="{{ !connected && showDetail }}">
-      <text class="detail-text" for="{{ detailLines }}">{{ $item }}</text>
+    <div class="settings-page" if="{{ settingsOpen }}">
+      <text class="settings-title">字体设置</text>
+      <text class="settings-value">字号：{{ fontSize }}</text>
+      <slider
+        class="font-slider"
+        min="24"
+        max="48"
+        step="2"
+        value="{{ fontSize }}"
+        onchange="handleFontSizeChange"
+      ></slider>
+      <text class="font-preview" style="font-size: {{ fontSize }}px;">文字预览</text>
+      <input class="back-button" type="button" value="返回" onclick="closeSettings" />
     </div>
-    <div class="content">
-      <div class="item" if="{{ !displayText }}">
-        <text class="empty-text">{{ emptyText }}</text>
+
+    <scroll class="main-page" scroll-y="true" bounces="true" if="{{ !settingsOpen }}">
+      <text class="header" if="{{ !connected }}">Data Sync</text>
+      <div class="status-row">
+        <input class="settings-button" type="button" value="Aa" onclick="openSettings" />
+        <text class="status">连接状态：{{ statusText }}</text>
       </div>
-      <div class="item message" if="{{ displayText }}">
-        <text class="message-text">{{ displayText }}</text>
+      <input
+        class="detail-toggle"
+        type="button"
+        if="{{ !connected }}"
+        value="{{ showDetail ? '隐藏详情' : '诊断详情' }}"
+        onclick="toggleDetail"
+      />
+      <div class="detail-panel" if="{{ !connected && showDetail }}">
+        <text class="detail-text" for="{{ detailLines }}">{{ $item }}</text>
       </div>
-      <div class="item" if="{{ displayText }}">
-        <div class="actions-row">
-          <input
-            class="action-btn primary"
-            type="button"
-            value="{{ primaryLabel }}"
-            onclick="handlePrimary"
-          />
-          <input
-            class="action-btn secondary"
-            type="button"
-            value="{{ secondaryLabel }}"
-            onclick="handleSecondary"
-          />
+      <scroll id="contentScroll" class="content-scroll" scroll-y="true" bounces="true">
+        <div class="content">
+          <div class="item" if="{{ !displayText }}">
+            <text class="empty-text" style="font-size: {{ fontSize }}px;">{{ emptyText }}</text>
+          </div>
+          <div class="item message" if="{{ displayText }}">
+            <text class="message-text" style="font-size: {{ fontSize }}px;">{{ displayText }}</text>
+          </div>
+          <div class="item" if="{{ displayText }}">
+            <div class="actions-row">
+              <input
+                class="action-btn reset"
+                type="button"
+                value="{{ resetLabel }}"
+                onclick="handleReset"
+              />
+              <input
+                class="action-btn next"
+                type="button"
+                value="{{ nextLabel }}"
+                onclick="handleNext"
+              />
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+      </scroll>
+    </scroll>
   </div>
 </template>
 
@@ -49,12 +71,12 @@ export default {
     connected: false,
     statusText: "未连接",
     emptyText: "暂无消息，等待手机端发送…",
-    primaryLabel: "确定",
-    secondaryLabel: "取消",
-    actionPrimary: "confirm",
-    actionSecondary: "cancel",
+    resetLabel: "重置",
+    nextLabel: "下一段",
     showDetail: false,
-    detailLines: []
+    detailLines: [],
+    settingsOpen: false,
+    fontSize: 32
   },
 
   onReady() {
@@ -179,14 +201,11 @@ export default {
     }
 
     if (msg && msg.type === "text" && typeof msg.content === "string") {
-      this.displayText = this.displayText
-        ? `${this.displayText}\n\n${msg.content}`
-        : msg.content
+      this.displayText = msg.content
+      this.scrollContentToTop()
       this.sendAction("received")
     } else {
-      this.displayText = this.displayText
-        ? `${this.displayText}\n\n${String(raw)}`
-        : String(raw)
+      this.displayText = String(raw)
     }
   },
 
@@ -243,12 +262,34 @@ export default {
     return text
   },
 
-  handlePrimary() {
-    this.sendAction(this.actionPrimary)
+  openSettings() {
+    this.settingsOpen = true
   },
 
-  handleSecondary() {
-    this.sendAction(this.actionSecondary)
+  closeSettings() {
+    this.settingsOpen = false
+  },
+
+  handleFontSizeChange(e) {
+    this.fontSize = e.progress
+  },
+
+  scrollContentToTop() {
+    setTimeout(() => {
+      const scroll = this.$element("contentScroll")
+      if (scroll) {
+        scroll.scrollTo({ top: 0, behavior: "instant" })
+      }
+    }, 0)
+  },
+
+  handleReset() {
+    this.displayText = ""
+    this.sendAction("reset")
+  },
+
+  handleNext() {
+    this.sendAction("next")
   },
 
   toggleDetail() {
@@ -330,9 +371,81 @@ export default {
   padding: 30px;
 }
 
-.content {
-  flex: 1;
+.main-page,
+.settings-page {
   width: 100%;
+  flex-direction: column;
+}
+
+.main-page {
+  height: 454px;
+}
+
+.settings-page {
+  flex: 1;
+}
+
+.settings-title {
+  font-size: 36px;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.settings-value,
+.font-preview {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.settings-value {
+  font-size: 26px;
+}
+
+.font-slider {
+  width: 100%;
+  margin-bottom: 30px;
+  padding-left: 0;
+  padding-right: 0;
+  selected-color: #0faeff;
+}
+
+.back-button {
+  width: 100%;
+  height: 70px;
+  margin-top: 30px;
+  border-radius: 35px;
+  font-size: 26px;
+  color: #ffffff;
+  background-color: #666666;
+}
+
+.status-row {
+  width: 100%;
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.settings-button {
+  width: 54px;
+  height: 54px;
+  border-radius: 27px;
+  font-size: 20px;
+  color: #ffffff;
+  text-align: center;
+  background-color: #555555;
+  margin-left: 36px;
+}
+
+.content {
+  width: 100%;
+  flex-direction: column;
+}
+
+.content-scroll {
+  width: 100%;
+  height: 380px;
   flex-direction: column;
 }
 
@@ -344,9 +457,9 @@ export default {
 }
 
 .status {
+  flex: 1;
   font-size: 22px;
   text-align: center;
-  margin-bottom: 20px;
   color: #888888;
 }
 
@@ -389,13 +502,11 @@ export default {
 }
 
 .message-text {
-  font-size: 26px;
   color: #ffffff;
   width: 100%;
 }
 
 .empty-text {
-  font-size: 26px;
   color: #888888;
   text-align: center;
 }
@@ -416,11 +527,11 @@ export default {
   text-align: center;
 }
 
-.primary {
-  background-color: #0faeff;
+.reset {
+  background-color: #666666;
 }
 
-.secondary {
-  background-color: #666666;
+.next {
+  background-color: #0faeff;
 }
 </style>
