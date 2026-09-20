@@ -33,10 +33,25 @@
       </div>
       <scroll id="contentScroll" class="content-scroll" scroll-y="true" bounces="true">
         <div class="content">
-          <div class="item" if="{{ !displayText }}">
-            <text class="empty-text" style="font-size: {{ fontSize }}px;">{{ emptyText }}</text>
+          <div class="item">
+            <text
+              class="empty-text"
+              if="{{ !displayText && historyItems.length === 0 }}"
+              style="font-size: {{ fontSize }}px;"
+            >{{ emptyText }}</text>
+            <div class="history-panel" if="{{ !displayText && historyItems.length > 0 }}">
+              <text class="history-title">阅读历史</text>
+              <text class="history-status" if="{{ historyStatus }}">{{ historyStatus }}</text>
+              <input
+                class="history-item"
+                type="button"
+                for="{{ historyItems }}"
+                value="{{ $item.displayName }}"
+                onclick="openHistory($item)"
+              />
+            </div>
           </div>
-          <div class="item message" if="{{ displayText }}">
+          <div class="item message">
             <text class="message-text" style="font-size: {{ fontSize }}px;">{{ displayText }}</text>
           </div>
           <div class="item" if="{{ displayText }}">
@@ -76,7 +91,10 @@ export default {
     showDetail: false,
     detailLines: [],
     settingsOpen: false,
-    fontSize: 32
+    fontSize: 32,
+    historyItems: [],
+    historyStatus: "",
+    historyRequested: false
   },
 
   onReady() {
@@ -103,12 +121,14 @@ export default {
       this.showDetail = false
       this.statusText = "已连接"
       this.addDetail(`onopen${reconnected}`)
+      this.scheduleHistoryRequest()
     }
 
     conn.onclose = (data) => {
       const code = data && data.code
       console.log(`[interconnect] onclose code=${code} data=${data && data.data}`)
       this.connected = false
+      this.historyRequested = false
       this.statusText = "已断开"
       this.addDetail(`onclose code=${code} (${this.describeCode(code)})`)
     }
@@ -117,6 +137,7 @@ export default {
       const code = data && data.code
       console.log(`[interconnect] onerror code=${code} data=${data && data.data}`)
       this.connected = false
+      this.historyRequested = false
       this.statusText = "连接错误"
       this.addDetail(`onerror code=${code} (${this.describeCode(code)})`)
     }
@@ -145,6 +166,7 @@ export default {
     if (status != null) {
       this.connected = this.isApkConnected(status)
       if (this.connected) this.showDetail = false
+      if (this.connected) this.scheduleHistoryRequest()
       this.statusText = this.describeApkStatus(status)
       return
     }
@@ -154,6 +176,7 @@ export default {
         const s = res && res.status
         this.connected = s === 1
         if (this.connected) this.showDetail = false
+        if (this.connected) this.scheduleHistoryRequest()
         this.statusText = this.connected ? "已连接" : "未连接"
         this.addDetail(`getReadyState status=${s}`)
       },
@@ -201,9 +224,20 @@ export default {
     }
 
     if (msg && msg.type === "text" && typeof msg.content === "string") {
+      this.historyStatus = ""
       this.displayText = msg.content
       this.scrollContentToTop()
       this.sendAction("received")
+    } else if (msg && msg.type === "history_list" && Array.isArray(msg.items)) {
+      this.historyItems = msg.items.map((item) => ({
+        id: String(item.id || ""),
+        displayName: this.truncateName(String(item.name || ""))
+      }))
+      this.historyStatus = ""
+    } else if (msg && msg.type === "history_error") {
+      this.historyStatus = ""
+      this.displayText = `读取失败：${msg.message || "未知错误"}`
+      this.scrollContentToTop()
     } else {
       this.displayText = String(raw)
     }
@@ -292,6 +326,30 @@ export default {
     this.sendAction("next")
   },
 
+  requestHistory() {
+    this.sendAction("history_list")
+  },
+
+  scheduleHistoryRequest() {
+    if (this.historyRequested) return
+    this.historyRequested = true
+    setTimeout(() => this.requestHistory(), 500)
+  },
+
+  openHistory(item) {
+    if (!item || !item.id) return
+    this.historyStatus = `正在打开 ${item.displayName}…`
+    this.sendAction("history_open", { id: item.id }, () => {
+      this.historyStatus = "请求发送失败，请重试"
+    })
+  },
+
+  truncateName(name) {
+    const max = 22
+    if (name.length <= max) return name
+    return `${name.slice(0, max - 3)}...`
+  },
+
   toggleDetail() {
     this.showDetail = !this.showDetail
     if (this.showDetail) {
@@ -343,21 +401,25 @@ export default {
     return "未知"
   },
 
-  sendAction(action) {
+  sendAction(action, extra, onFail) {
     if (!this.conn) {
       this.setupInterconnect()
     }
+    const data = { type: "action", action: action }
+    if (extra) {
+      Object.keys(extra).forEach((key) => {
+        data[key] = extra[key]
+      })
+    }
     this.conn.send({
-      data: {
-        type: "action",
-        action: action
-      },
+      data: data,
       success: () => {
         console.log(`[interconnect] action "${action}" sent`)
       },
       fail: (res, code) => {
         console.log(`[interconnect] action "${action}" send fail code=${code} data=${res && res.data}`)
         this.addDetail(`send "${action}" fail code=${code} (${this.describeCode(code)})`)
+        if (onFail) onFail(res, code)
       }
     })
   }
@@ -509,6 +571,39 @@ export default {
 .empty-text {
   color: #888888;
   text-align: center;
+}
+
+.history-panel {
+  width: 100%;
+  flex-direction: column;
+}
+
+.history-title {
+  font-size: 28px;
+  font-weight: bold;
+  margin-bottom: 14px;
+  color: #ffffff;
+}
+
+.history-status {
+  width: 100%;
+  font-size: 22px;
+  color: #0faeff;
+  margin-bottom: 10px;
+}
+
+.history-item {
+  width: 100%;
+  height: 64px;
+  padding-left: 18px;
+  padding-right: 18px;
+  margin-bottom: 10px;
+  align-items: center;
+  text-align: left;
+  font-size: 25px;
+  color: #ffffff;
+  background-color: #292929;
+  border-radius: 16px;
 }
 
 .actions-row {
