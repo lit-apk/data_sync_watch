@@ -17,9 +17,16 @@
 
     <scroll class="main-page" scroll-y="true" bounces="true" if="{{ !settingsOpen }}">
       <text class="header" if="{{ !connected }}">Data Sync</text>
-      <div class="status-row">
-        <input class="settings-button" type="button" value="Aa" onclick="openSettings" />
-        <text class="status">连接状态：{{ statusText }}</text>
+      <div class="{{ compactHeader ? 'status-row status-row-raised' : 'status-row' }}">
+        <input
+          class="round-button back-button-small"
+          type="button"
+          if="{{ connected && displayText }}"
+          value="‹"
+          onclick="returnToInitial"
+        />
+        <text class="status">{{ displayText ? readingName : '连接状态：' + statusText }}</text>
+        <input class="round-button settings-button" type="button" value="Aa" onclick="openSettings" />
       </div>
       <input
         class="detail-toggle"
@@ -31,7 +38,13 @@
       <div class="detail-panel" if="{{ !connected && showDetail }}">
         <text class="detail-text" for="{{ detailLines }}">{{ $item }}</text>
       </div>
-      <scroll id="contentScroll" class="content-scroll" scroll-y="true" bounces="true">
+      <scroll
+        id="contentScroll"
+        class="content-scroll"
+        scroll-y="true"
+        bounces="true"
+        onscroll="handleContentScroll"
+      >
         <div class="content">
           <div class="item">
             <text
@@ -51,7 +64,7 @@
               />
             </div>
           </div>
-          <div class="item message">
+          <div class="item message" onclick="handleReadingTap">
             <text class="message-text" style="font-size: {{ fontSize }}px;">{{ displayText }}</text>
           </div>
           <div class="item" if="{{ displayText }}">
@@ -94,7 +107,9 @@ export default {
     fontSize: 32,
     historyItems: [],
     historyStatus: "",
-    historyRequested: false
+    historyRequested: false,
+    readingName: "阅读内容",
+    compactHeader: false
   },
 
   onReady() {
@@ -309,12 +324,37 @@ export default {
   },
 
   scrollContentToTop() {
+    this.compactHeader = false
     setTimeout(() => {
       const scroll = this.$element("contentScroll")
       if (scroll) {
         scroll.scrollTo({ top: 0, behavior: "instant" })
       }
     }, 0)
+  },
+
+  handleReadingTap(e) {
+    if (!this.displayText || !e || e.clientY < 320) return
+    this.compactHeader = true
+    const scroll = this.$element("contentScroll")
+    if (scroll) {
+      scroll.scrollBy({ top: 300, behavior: "smooth" })
+    }
+  },
+
+  handleContentScroll(e) {
+    if (!this.displayText) return
+    this.compactHeader = !!e && e.scrollY > 8
+  },
+
+  returnToInitial() {
+    this.displayText = ""
+    this.readingName = "阅读内容"
+    this.compactHeader = false
+    this.historyStatus = ""
+    this.sendAction("reset")
+    this.requestHistory()
+    this.scrollContentToTop()
   },
 
   handleReset() {
@@ -338,6 +378,7 @@ export default {
 
   openHistory(item) {
     if (!item || !item.id) return
+    this.readingName = item.displayName
     this.historyStatus = `正在打开 ${item.displayName}…`
     this.sendAction("history_open", { id: item.id }, () => {
       this.historyStatus = "请求发送失败，请重试"
@@ -345,7 +386,7 @@ export default {
   },
 
   truncateName(name) {
-    const max = 22
+    const max = 8
     if (name.length <= max) return name
     return `${name.slice(0, max - 3)}...`
   },
@@ -431,6 +472,7 @@ export default {
   flex: 1;
   flex-direction: column;
   padding: 30px;
+  background-color: #000000;
 }
 
 .main-page,
@@ -489,15 +531,29 @@ export default {
   margin-bottom: 20px;
 }
 
-.settings-button {
+.status-row-raised {
+  transform: translateY(-27px);
+  margin-bottom: -27px;
+}
+
+.round-button {
   width: 54px;
   height: 54px;
   border-radius: 27px;
   font-size: 20px;
   color: #ffffff;
   text-align: center;
-  background-color: #555555;
+  background-color: transparent;
+  border: 2px solid #888888;
+}
+
+.back-button-small {
   margin-left: 36px;
+  font-size: 34px;
+}
+
+.settings-button {
+  margin-right: 36px;
 }
 
 .content {
