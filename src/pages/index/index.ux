@@ -76,10 +76,10 @@
           <div class="item" if="{{ displayText }}">
             <div class="actions-row">
               <input
-                class="action-btn reset"
+                class="action-btn prev"
                 type="button"
-                value="{{ resetLabel }}"
-                onclick="handleReset"
+                value="{{ previousLabel }}"
+                onclick="handlePrevious"
               />
               <input
                 class="action-btn next"
@@ -97,6 +97,7 @@
 
 <script>
 import interconnect from "@system.interconnect"
+import prompt from "@system.prompt"
 
 export default {
   private: {
@@ -105,7 +106,7 @@ export default {
     connected: false,
     statusText: "未连接",
     emptyText: "暂无消息，等待手机端发送…",
-    resetLabel: "重置",
+    previousLabel: "上一页",
     nextLabel: "下一段",
     showDetail: false,
     detailLines: [],
@@ -259,6 +260,8 @@ export default {
       this.historyStatus = ""
       this.displayText = `读取失败：${msg.message || "未知错误"}`
       this.scrollContentToTop()
+    } else if (msg && msg.type === "not_supported") {
+      this.showToast(msg.message || "不支持上一页")
     } else {
       this.displayText = String(raw)
     }
@@ -368,13 +371,16 @@ export default {
     this.scrollContentToTop()
   },
 
-  handleReset() {
-    this.displayText = ""
-    this.sendAction("reset")
+  handlePrevious() {
+    this.sendAction("previous")
   },
 
   handleNext() {
     this.sendAction("next")
+  },
+
+  showToast(message) {
+    prompt.showToast({ message: message, duration: 2 })
   },
 
   requestHistory() {
@@ -693,7 +699,7 @@ export default {
   text-align: center;
 }
 
-.reset {
+.prev {
   background-color: #666666;
 }
 

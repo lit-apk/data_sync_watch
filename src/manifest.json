@@ -14,6 +14,9 @@
     },
     {
       "name": "system.interconnect"
+    },
+    {
+      "name": "system.prompt"
     }
   ],
   "config": {
