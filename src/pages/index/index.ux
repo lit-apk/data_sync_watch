@@ -26,7 +26,7 @@
           value="‹"
           onclick="returnToInitial"
         />
-        <text class="status">{{ displayText ? readingName : '连接状态：' + statusText }}</text>
+        <text class="status">{{ currentTime }}</text>
         <input
           class="round-button settings-button"
           type="button"
@@ -116,19 +116,41 @@ export default {
     historyStatus: "",
     historyRequested: false,
     readingName: "阅读内容",
-    compactHeader: false
+    compactHeader: false,
+    currentTime: "00:00",
+    clockTimer: null
   },
 
   onReady() {
+    this.updateClock()
+    this.clockTimer = setInterval(() => this.updateClock(), 1000)
     this.setupInterconnect()
   },
 
   onShow() {
+    this.updateClock()
+    if (!this.clockTimer) {
+      this.clockTimer = setInterval(() => this.updateClock(), 1000)
+    }
     if (!this.conn) {
       this.setupInterconnect()
     } else {
       this.refreshStatus()
     }
+  },
+
+  onDestroy() {
+    if (this.clockTimer) {
+      clearInterval(this.clockTimer)
+      this.clockTimer = null
+    }
+  },
+
+  updateClock() {
+    const now = new Date()
+    const hours = String(now.getHours()).padStart(2, "0")
+    const minutes = String(now.getMinutes()).padStart(2, "0")
+    this.currentTime = `${hours}:${minutes}`
   },
 
   setupInterconnect() {
