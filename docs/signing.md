@@ -10,7 +10,7 @@ future updates from using the same identity.
 
 ## 1. Create the shared key
 
-Run from `watch_data_sync` and choose strong passwords when prompted:
+Run from `data_sync` and choose strong passwords when prompted:
 
 ```sh
 keytool -genkeypair \
@@ -24,7 +24,7 @@ Do this once only. Reuse this keystore for every APK and RPK update.
 
 ## 2. Configure Android release signing
 
-Create `watch_data_sync/keystore.properties` with these values:
+Create `data_sync/keystore.properties` with these values:
 
 ```properties
 storeFile=data-sync-release.jks
@@ -36,7 +36,7 @@ keyPassword=YOUR_KEY_PASSWORD
 Build the signed APK:
 
 ```sh
-cd watch_data_sync
+cd data_sync
 ./gradlew assembleRelease
 ```
 
@@ -51,33 +51,33 @@ Convert the JKS to a temporary PKCS#12 file, then export both:
 
 ```sh
 keytool -importkeystore \
-  -srckeystore watch_data_sync/data-sync-release.jks \
+  -srckeystore data_sync/data-sync-release.jks \
   -srcalias data-sync \
   -destkeystore /tmp/data-sync-release.p12 \
   -deststoretype PKCS12
 
-mkdir -p data-sync/sign/release data-sync/sign/debug
+mkdir -p data_sync_watch/sign/release data_sync_watch/sign/debug
 
 openssl pkcs12 \
   -in /tmp/data-sync-release.p12 \
   -nocerts -nodes \
   | openssl pkcs8 -topk8 -nocrypt \
-  -out data-sync/sign/release/private.pem
+  -out data_sync_watch/sign/release/private.pem
 
 openssl pkcs12 \
   -in /tmp/data-sync-release.p12 \
   -clcerts -nokeys \
-  -out data-sync/sign/release/certificate.pem
+  -out data_sync_watch/sign/release/certificate.pem
 
-cp data-sync/sign/release/private.pem data-sync/sign/debug/private.pem
-cp data-sync/sign/release/certificate.pem data-sync/sign/debug/certificate.pem
+cp data_sync_watch/sign/release/private.pem data_sync_watch/sign/debug/private.pem
+cp data_sync_watch/sign/release/certificate.pem data_sync_watch/sign/debug/certificate.pem
 rm /tmp/data-sync-release.p12
 ```
 
 The commands prompt for the passwords set in step 1. Restrict private-key access:
 
 ```sh
-chmod 600 data-sync/sign/release/private.pem data-sync/sign/debug/private.pem
+chmod 600 data_sync_watch/sign/release/private.pem data_sync_watch/sign/debug/private.pem
 ```
 
 Build the RPK with the project toolchain:
@@ -99,15 +99,15 @@ Print the certificate SHA-256 fingerprint from the source keystore:
 
 ```sh
 keytool -list -v \
-  -keystore watch_data_sync/data-sync-release.jks \
+  -keystore data_sync/data-sync-release.jks \
   -alias data-sync
 ```
 
 Verify the APK and inspect its signer fingerprint:
 
 ```sh
-$ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose --print-certs \
-  watch_data_sync/app/build/outputs/apk/release/app-release.apk
+$ANDROID_HOME/build-tools/<version>/apksigner verify --verbose --print-certs \
+  data_sync/app/build/outputs/apk/release/app-release.apk
 ```
 
 The APK `Signer #1 certificate SHA-256 digest` must equal the keystore SHA-256
@@ -115,12 +115,12 @@ fingerprint (ignoring colons and letter case). Also verify the exported Vela
 certificate:
 
 ```sh
-openssl x509 -in data-sync/sign/release/certificate.pem \
+openssl x509 -in data_sync_watch/sign/release/certificate.pem \
   -noout -fingerprint -sha256
 ```
 
 This fingerprint must match as well. Finally, inspect the newly built RPK rather
-than the old debug artifact in `data-sync/dist`; package names and certificates
+than the old debug artifact in `data_sync_watch/dist`; package names and certificates
 from previously built artifacts do not change when source files are edited.
 
 The exact `apksigner` directory depends on the installed Android build-tools
