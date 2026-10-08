@@ -169,13 +169,18 @@ export default {
     })
   },
 
-  clearImageCache() {
+  clearImageCache(done) {
+    this.imageUris = []
+    this.imageFiles = {}
     file.rmdir({
       uri: this.imageCacheDir,
       recursive: true,
-      complete: () => file.mkdir({ uri: this.imageCacheDir, recursive: true })
+      complete: () => file.mkdir({
+        uri: this.imageCacheDir,
+        recursive: true,
+        complete: () => { if (done) done() }
+      })
     })
-    this.imageUris = []
   },
 
   onShow() {
@@ -565,6 +570,9 @@ export default {
     this.readingName = this.$t("reading")
     this.compactHeader = false
     this.historyStatus = ""
+    // Leaving the current file: image names (img-<seq>-<id>) can repeat across files and
+    // app launches, so drop its images now or the next file could show them.
+    this.clearImageCache()
     this.sendAction("reset")
     this.requestHistory()
     this.scrollContentToTop()
@@ -601,8 +609,13 @@ export default {
     if (!item || !item.id) return
     this.readingName = item.displayName
     this.historyStatus = this.$t("history.opening", { name: item.displayName })
-    this.sendAction("history_open", { id: item.id }, () => {
-      this.historyStatus = this.$t("history.requestFailed")
+    // Opening a file: image names are reused across files, so drop the previous file's
+    // images first; send the request only after the folder is recreated, so the first
+    // incoming image chunk cannot race with the deletion.
+    this.clearImageCache(() => {
+      this.sendAction("history_open", { id: item.id }, () => {
+        this.historyStatus = this.$t("history.requestFailed")
+      })
     })
   },
 
