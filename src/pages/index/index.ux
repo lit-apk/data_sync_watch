@@ -72,7 +72,10 @@
           </div>
           <div class="item message" if="{{ reading }}" onclick="handleReadingTap">
             <div class="page-item" for="{{ pageItems }}">
-              <image class="reading-image" if="{{ $item.type === 'image' && $item.src }}" src="{{ $item.src }}" style="width: {{ $item.width }}px; height: {{ $item.height }}px;" onerror="imageLoadFailed($idx)" />
+              <!-- No fixed box: the phone encodes at width * pixelRatio, so the image's own
+                   layout size is already the card width. object-fit is inline because the
+                   class rule was not reliably applied, and the default "cover" crops. -->
+              <image if="{{ $item.type === 'image' && $item.src }}" src="{{ $item.src }}" style="object-fit: contain;" oncomplete="imageLoaded($idx)" onerror="imageLoadFailed($idx)" />
               <text class="image-alt" if="{{ $item.type === 'image' && !$item.src }}">{{ $item.alt }}</text>
               <text class="message-text" if="{{ $item.type === 'text' }}" style="font-size: {{ fontSize }}px;">{{ $item.content }}</text>
             </div>
@@ -102,6 +105,9 @@
           </div>
         </div>
       </scroll>
+      <!-- Measures pixelRatio before the first real image arrives: the logo is a known
+           96x96 bitmap, and oncomplete reports its layout size. -->
+      <image src="/common/logo.png" style="width: 1px; height: 1px; opacity: 0;" oncomplete="probeLoaded" />
     </scroll>
   </div>
 </template>
@@ -144,6 +150,15 @@ export default {
     readingName: "",
     compactHeader: false,
     imageCacheDir: "",
+    // { contentWidth, pixelRatio } sent with every action so the phone encodes images for
+    // this watch's layout; null until the reading area is measured or device.getInfo answers.
+    screenInfo: null,
+    // Width of the reading area in layout pixels (getBoundingClientRect). device.getInfo
+    // screen sizes are not in layout pixels, so they are only a fallback estimate.
+    measuredWidth: 0,
+    // Bitmap pixels per layout pixel: <image> lays a bitmap out at its pixel size / ratio
+    // (observed ~1.3: a 406px bitmap was 313 layout px wide and looked cut). 1 until measured.
+    pixelRatio: 1,
     imageUris: [],
     pendingImage: null,
     currentTime: "00:00",
@@ -184,6 +199,8 @@ export default {
   },
 
   onShow() {
+    // getBoundingClientRect is only valid after onShow; measure once layout settles.
+    setTimeout(() => this.measureLayout(), 0)
     this.updateClock()
     if (!this.clockTimer) {
       this.clockTimer = setInterval(() => this.updateClock(), 1000)
@@ -388,7 +405,7 @@ export default {
     const chunk = target.queue.shift()
     // String writes (writeText) turn bytes >= 128 into U+FFFD on the watch, so decode
     // to a Uint8Array and write it as a buffer.
-    file.writeArrayBuffer({
+    const write = () => file.writeArrayBuffer({
       uri: target.uri,
       buffer: base64ToBytes(chunk.data),
       append: chunk.offset > 0,
@@ -405,6 +422,15 @@ export default {
         this.receivePendingPage()
       }
     })
+    if (chunk.offset > 0) {
+      write()
+      return
+    }
+    // writeArrayBuffer without append overwrites from byte 0 but does not truncate, and
+    // image names repeat (e.g. across launches). An older, larger file at this path would
+    // leave its tail after the new JPEG and show as garbage below the image, so delete
+    // it first; "complete" runs whether or not a file existed.
+    file.delete({ uri: target.uri, complete: write })
   },
 
   handleProtocolMessage(msg) {
@@ -412,18 +438,31 @@ export default {
     if (!this.protocolReady) this.showToast(this.$t("protocol.incompatible"))
   },
 
+  // Measures the reading area's real width in layout pixels; the phone encodes images at
+  // this width (times pixelRatio). Computing it from device.getInfo was wrong by the ratio.
+  measureLayout() {
+    const scroll = this.$element("contentScroll")
+    if (!scroll) return
+    scroll.getBoundingClientRect({
+      success: (box) => {
+        const width = Math.floor(box.width)
+        if (width <= 0) return
+        this.measuredWidth = width
+        this.screenInfo = { contentWidth: width, pixelRatio: this.pixelRatio }
+      }
+    })
+  },
+
   negotiateProtocol() {
     if (this.protocolRequested) return
     this.protocolRequested = true
-    // Report screen geometry so the phone can size images; layout math stays on the phone.
+    // sendAction attaches screenInfo; device.getInfo only seeds a rough estimate so the
+    // first page is close even before the reading area has been measured.
     const send = (info) => {
       const extra = { version: this.protocolVersion }
-      if (info && info.screenWidth) {
-        extra.screenWidth = info.screenWidth
-        extra.screenHeight = info.screenHeight
-        extra.screenShape = info.screenShape
-        // .page padding (30px) and .message padding (16px) on both sides.
-        extra.contentWidth = info.screenWidth - 2 * (30 + 16)
+      if (info && info.screenWidth && !this.measuredWidth) {
+        // Estimate (screen minus .page padding) until measureLayout reports the real width.
+        this.screenInfo = { contentWidth: info.screenWidth - 2 * 30, pixelRatio: this.pixelRatio }
       }
       this.sendAction("protocol", extra)
     }
@@ -450,24 +489,31 @@ export default {
     }
   },
 
+  // Root cause of the "image is cut" bug: <image> lays a bitmap out at its pixel size
+  // divided by a device ratio, so a contentWidth-px bitmap covered only ~77% of the card.
+  // The phone now encodes at contentWidth * pixelRatio; the ratio comes from the startup
+  // probe and is refined by every loaded image (sent bitmap width / laid-out width).
+  setPixelRatio(ratio, source) {
+    if (!(ratio >= 0.5 && ratio <= 4)) return
+    if (Math.abs(ratio - this.pixelRatio) < 0.01) return
+    this.pixelRatio = ratio
+    if (this.screenInfo) this.screenInfo.pixelRatio = ratio
+    this.addDetail(`pixel ratio ${ratio.toFixed(3)} (${source})`)
+  },
+
+  probeLoaded(e) {
+    if (e && e.width > 0) this.setPixelRatio(96 / e.width, "probe")
+  },
+
+  imageLoaded(index, e) {
+    const item = this.pageItems[index]
+    if (item && e && e.width > 0 && item.bitmapWidth > 0) this.setPixelRatio(item.bitmapWidth / e.width, "image")
+  },
+
   imageLoadFailed(index) {
     const item = this.pageItems[index]
     if (!item) return
-    const show = (detail) => {
-      const alt = `${this.$t("image.decodeFailed")} ${detail}`
-      this.addDetail(alt)
-      this.pageItems.splice(index, 1, { type: "image", alt: alt })
-    }
-    // Diagnose the written file: actual vs expected size, and leading bytes (JPEG = ff d8 ff).
-    file.readArrayBuffer({
-      uri: item.src,
-      success: (data) => {
-        const bytes = data.buffer
-        const head = Array.from(bytes.subarray(0, 8)).map((b) => (b < 16 ? "0" : "") + b.toString(16)).join(" ")
-        show(`(${bytes.length}/${item.total}B, ${head})`)
-      },
-      fail: (data, code) => show(`(read ${code})`)
-    })
+    this.pageItems.splice(index, 1, { type: "image", alt: this.$t("image.decodeFailed") })
   },
 
   receivePendingPage(timedOut) {
@@ -501,8 +547,8 @@ export default {
       this.addDetail(missing)
       return { type: "image", alt: missing }
     }
-    // Width/height are computed by the phone; fall back to the old fixed box.
-    return { type: "image", src: target.uri, total: target.total, alt: item.alt || "", width: item.width || 300, height: item.height || 260 }
+    // bitmapWidth (pixels, from the phone) is only used to refine pixelRatio in imageLoaded.
+    return { type: "image", src: target.uri, alt: item.alt || "", bitmapWidth: item.width || 0 }
   },
 
   receivePage(items) {
@@ -527,6 +573,8 @@ export default {
 
   closeSettings() {
     this.settingsOpen = false
+    // The reading scroll is only rendered outside settings; measure it again.
+    setTimeout(() => this.measureLayout(), 0)
   },
 
   handleFontSizeChange(e) {
@@ -666,6 +714,13 @@ export default {
       this.setupInterconnect()
     }
     const data = { type: "action", action: action }
+    // Every action carries contentWidth/pixelRatio, so the phone sizes images for this watch
+    // even if it restarted and missed the protocol handshake (stale sizes made images wrong).
+    if (this.screenInfo) {
+      Object.keys(this.screenInfo).forEach((key) => {
+        data[key] = this.screenInfo[key]
+      })
+    }
     if (extra) {
       Object.keys(extra).forEach((key) => {
         data[key] = extra[key]
@@ -837,31 +892,27 @@ export default {
 
 .message {
   margin-bottom: 10px;
-  padding: 16px;
+  /* No padding: images span the card edge to edge (their width is the measured card
+     width); text and placeholders carry their own padding instead. */
   background-color: #1e1e1e;
   border-radius: 10px;
 }
 
 .message-text {
   color: #ffffff;
-  width: 100%;
+  padding: 16px;
 }
 
 .page-item {
   width: 100%;
   flex-direction: column;
-  align-items: center;
-}
-
-.reading-image {
-  margin-bottom: 16px;
-  object-fit: contain;
+  align-items: stretch;
 }
 
 .image-alt {
   font-size: 18px;
   color: #777777;
-  margin-bottom: 12px;
+  padding: 16px;
 }
 
 .empty-text {
