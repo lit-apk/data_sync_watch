@@ -72,10 +72,11 @@
           </div>
           <div class="item message" if="{{ reading }}" onclick="handleReadingTap">
             <div class="page-item" for="{{ pageItems }}">
-              <!-- No fixed box: the phone encodes at width * pixelRatio, so the image's own
-                   layout size is already the card width. object-fit is inline because the
-                   class rule was not reliably applied, and the default "cover" crops. -->
-              <image if="{{ $item.type === 'image' && $item.src }}" src="{{ $item.src }}" style="object-fit: contain;" oncomplete="imageLoaded($idx)" onerror="imageLoadFailed($idx)" />
+              <!-- Explicit box: card width x the bitmap's aspect ratio. The phone may send a
+                   reduced bitmap (reduce factor / size limit); object-fit: contain scales it to
+                   exactly fill the box. Inline because the class rule was not reliably applied
+                   and the default "cover" crops. -->
+              <image if="{{ $item.type === 'image' && $item.src }}" src="{{ $item.src }}" style="width: {{ $item.width }}px; height: {{ $item.height }}px; object-fit: contain;" oncomplete="imageLoaded($idx)" onerror="imageLoadFailed($idx)" />
               <text class="image-alt" if="{{ $item.type === 'image' && !$item.src }}">{{ $item.alt }}</text>
               <text class="message-text" if="{{ $item.type === 'text' }}" style="font-size: {{ fontSize }}px;">{{ $item.content }}</text>
             </div>
@@ -129,7 +130,6 @@ export default {
     reading: false,
     canSkipImages: false,
     pendingSkipImages: false,
-    incomingSeq: 1,
     pageItems: [],
     imageFiles: {},
     pendingPage: null,
@@ -138,7 +138,7 @@ export default {
     connected: false,
     protocolReady: false,
     protocolRequested: false,
-    protocolVersion: "1.1",
+    protocolVersion: "1.2",
     statusText: "",
     showDetail: false,
     detailLines: [],
@@ -386,11 +386,13 @@ export default {
   // appended to the image file with native base64 decoding, so no per-byte JS runs
   // and the whole image is never held in memory.
   receiveImageChunk(msg) {
-    if (typeof msg.data !== "string") return
+    if (typeof msg.data !== "string" || typeof msg.key !== "string") return
     let target = this.imageFiles[msg.id]
     if (!target || msg.offset === 0) {
+      // Name the file after the image content (key from the phone): a different picture
+      // never reuses a path, so <image> cannot show its cached copy of an old picture.
       target = {
-        uri: `${this.imageCacheDir}/img-${this.incomingSeq}-${msg.id}.jpg`,
+        uri: `${this.imageCacheDir}/img-${msg.key}.jpg`,
         total: msg.total, written: 0, error: null, queue: [], busy: false
       }
       this.imageFiles[msg.id] = target
@@ -493,6 +495,8 @@ export default {
   // divided by a device ratio, so a contentWidth-px bitmap covered only ~77% of the card.
   // The phone now encodes at contentWidth * pixelRatio; the ratio comes from the startup
   // probe and is refined by every loaded image (sent bitmap width / laid-out width).
+  // Image boxes are now explicit (card width x aspect ratio), so a wrong ratio only costs
+  // sharpness, no longer size.
   setPixelRatio(ratio, source) {
     if (!(ratio >= 0.5 && ratio <= 4)) return
     if (Math.abs(ratio - this.pixelRatio) < 0.01) return
@@ -507,7 +511,11 @@ export default {
 
   imageLoaded(index, e) {
     const item = this.pageItems[index]
-    if (item && e && e.width > 0 && item.bitmapWidth > 0) this.setPixelRatio(item.bitmapWidth / e.width, "image")
+    if (!item || !e || !(e.width > 0) || !(item.bitmapWidth > 0)) return
+    // With an explicit box, oncomplete may report the box size instead of the bitmap's
+    // layout size; that says nothing about the ratio, so ignore it.
+    if (Math.abs(e.width - item.width) <= 1) return
+    this.setPixelRatio(item.bitmapWidth / e.width, "image")
   },
 
   imageLoadFailed(index) {
@@ -547,8 +555,15 @@ export default {
       this.addDetail(missing)
       return { type: "image", alt: missing }
     }
-    // bitmapWidth (pixels, from the phone) is only used to refine pixelRatio in imageLoaded.
-    return { type: "image", src: target.uri, alt: item.alt || "", bitmapWidth: item.width || 0 }
+    // Box = card width x the bitmap's aspect ratio, so a reduced bitmap is still shown
+    // card-wide. bitmapWidth (pixels, from the phone) only refines pixelRatio.
+    const width = this.cardWidth()
+    const height = item.width > 0 && item.height > 0 ? Math.round(width * item.height / item.width) : width
+    return { type: "image", src: target.uri, alt: item.alt || "", width: width, height: height, bitmapWidth: item.width || 0 }
+  },
+
+  cardWidth() {
+    return this.measuredWidth || (this.screenInfo && this.screenInfo.contentWidth) || 300
   },
 
   receivePage(items) {
@@ -558,13 +573,12 @@ export default {
     this.reading = true
     this.scrollContentToTop()
     this.sendAction("received")
-    // The new page is shown; remove the previous page's image files and start a
-    // new file sequence so <image> never shows a cached image from an old URI.
+    // The new page is shown; remove the previous page's image files, except paths this
+    // page still uses (content-keyed names repeat when the same picture shows again).
     const stale = this.imageUris || []
     this.imageUris = items.filter((item) => item.src).map((item) => item.src)
-    stale.forEach((uri) => file.delete({ uri: uri }))
+    stale.filter((uri) => this.imageUris.indexOf(uri) < 0).forEach((uri) => file.delete({ uri: uri }))
     this.imageFiles = {}
-    this.incomingSeq++
   },
 
   openSettings() {
