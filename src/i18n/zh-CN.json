@@ -5,13 +5,19 @@
     "show": "诊断详情", "hide": "隐藏详情", "initializing": "初始化连接实例…",
     "reconnected": " (重连)", "unrecognizedData": "onmessage: 无法识别消息数据",
     "starting": "展开详情，正在诊断…", "noConnection": "diagnosis: 无连接实例",
-    "running": "diagnosis 进行中(timeout=1500ms)…"
+    "running": "diagnosis 进行中(timeout=1500ms)…", "unknownMessageFormat": "onmessage: 未知消息格式", "none": "无"
   },
   "history": {
     "title": "阅读历史", "readFailed": "读取失败：{message}",
     "opening": "正在打开 {name}…", "requestFailed": "请求发送失败，请重试"
   },
-  "navigation": { "previous": "上一页", "next": "下一段", "previousUnsupported": "不支持上一页" },
+  "navigation": { "previous": "上一页", "next": "下一段", "previousUnsupported": "不支持上一页", "skipImages": "跳至下段文字" },
+  "protocol": { "incompatible": "协议版本不兼容" },
+  "image": {
+    "decodeFailed": "图片解码失败", "conversionFailed": "图片无法转换",
+    "incomplete": "图片未完整接收 {received}/{total}B；最后未知消息：{lastUnknown}",
+    "notReceived": "图片未接收", "writeFailed": "图片写入失败 ({code}) {bytes}B"
+  },
   "empty": "暂无消息，等待手机端发送…",
   "reading": "阅读内容",
   "status": {

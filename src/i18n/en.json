@@ -5,13 +5,19 @@
     "show": "Diagnostic details", "hide": "Hide details", "initializing": "Initializing connection…",
     "reconnected": " (reconnected)", "unrecognizedData": "onmessage: Unrecognized message data",
     "starting": "Opening details and running diagnostics…", "noConnection": "diagnosis: No connection instance",
-    "running": "diagnosis in progress (timeout=1500ms)…"
+    "running": "diagnosis in progress (timeout=1500ms)…", "unknownMessageFormat": "onmessage: Unknown message format", "none": "none"
   },
   "history": {
     "title": "Reading history", "readFailed": "Failed to read: {message}",
     "opening": "Opening {name}…", "requestFailed": "Failed to send request. Please try again."
   },
-  "navigation": { "previous": "Previous page", "next": "Next section", "previousUnsupported": "Previous page is not supported" },
+  "navigation": { "previous": "Previous page", "next": "Next section", "previousUnsupported": "Previous page is not supported", "skipImages": "Skip to next text" },
+  "protocol": { "incompatible": "Incompatible protocol version" },
+  "image": {
+    "decodeFailed": "Failed to decode image", "conversionFailed": "Failed to convert image",
+    "incomplete": "Image was not fully received: {received}/{total}B; last unknown: {lastUnknown}",
+    "notReceived": "Image not received", "writeFailed": "Failed to save image ({code}), {bytes}B"
+  },
   "empty": "No messages yet. Waiting for the phone…",
   "reading": "Reading content",
   "status": {

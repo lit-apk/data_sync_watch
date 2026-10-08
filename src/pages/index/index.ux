@@ -1,8 +1,8 @@
 <template>
   <div class="page">
     <div class="settings-page" if="{{ settingsOpen }}">
-      <text class="settings-title">字体设置</text>
-      <text class="settings-value">字号：{{ fontSize }}</text>
+      <text class="settings-title">{{ $t('settings.title') }}</text>
+      <text class="settings-value">{{ $t('settings.fontSize', { size: fontSize }) }}</text>
       <slider
         class="font-slider"
         min="24"
@@ -11,8 +11,8 @@
         value="{{ fontSize }}"
         onchange="handleFontSizeChange"
       ></slider>
-      <text class="font-preview" style="font-size: {{ fontSize }}px;">文字预览</text>
-      <input class="back-button" type="button" value="返回" onclick="closeSettings" />
+      <text class="font-preview" style="font-size: {{ fontSize }}px;">{{ $t('settings.preview') }}</text>
+      <input class="back-button" type="button" value="{{ $t('common.back') }}" onclick="closeSettings" />
     </div>
 
     <scroll class="main-page" scroll-y="true" bounces="true" if="{{ !settingsOpen }}">
@@ -38,7 +38,7 @@
         class="detail-toggle"
         type="button"
         if="{{ !connected }}"
-        value="{{ showDetail ? '隐藏详情' : '诊断详情' }}"
+        value="{{ showDetail ? $t('diagnostics.hide') : $t('diagnostics.show') }}"
         onclick="toggleDetail"
       />
       <div class="detail-panel" if="{{ !connected && showDetail }}">
@@ -57,9 +57,9 @@
               class="empty-text"
               if="{{ !reading && historyItems.length === 0 }}"
               style="font-size: {{ fontSize }}px;"
-            >{{ emptyText }}</text>
+            >{{ $t('empty') }}</text>
             <div class="history-panel" if="{{ !reading && historyItems.length > 0 }}">
-              <text class="history-title">阅读历史</text>
+              <text class="history-title">{{ $t('history.title') }}</text>
               <text class="history-status" if="{{ historyStatus }}">{{ historyStatus }}</text>
               <input
                 class="history-item"
@@ -82,13 +82,13 @@
               <input
                 class="action-btn prev"
                 type="button"
-                value="{{ previousLabel }}"
+                value="{{ $t('navigation.previous') }}"
                 onclick="handlePrevious"
               />
               <input
                 class="action-btn next"
                 type="button"
-                value="{{ nextLabel }}"
+                value="{{ $t('navigation.next') }}"
                 onclick="handleNext"
               />
             </div>
@@ -96,7 +96,7 @@
               class="skip-btn"
               type="button"
               if="{{ canSkipImages }}"
-              value="跳至下段文字"
+              value="{{ $t('navigation.skipImages') }}"
               onclick="handleSkipImages"
             />
           </div>
@@ -133,10 +133,7 @@ export default {
     protocolReady: false,
     protocolRequested: false,
     protocolVersion: "1.1",
-    statusText: "未连接",
-    emptyText: "暂无消息，等待手机端发送…",
-    previousLabel: "上一页",
-    nextLabel: "下一段",
+    statusText: "",
     showDetail: false,
     detailLines: [],
     settingsOpen: false,
@@ -144,7 +141,7 @@ export default {
     historyItems: [],
     historyStatus: "",
     historyRequested: false,
-    readingName: "阅读内容",
+    readingName: "",
     compactHeader: false,
     imageCacheDir: "",
     imageUris: [],
@@ -157,6 +154,8 @@ export default {
     const info = app.getInfo()
     this.imageCacheDir = `internal://cache/${info.packageName}/caches/img`
     this.prepareImageCache()
+    this.statusText = this.$t("status.disconnected")
+    this.readingName = this.$t("reading")
     this.updateClock()
     this.clockTimer = setInterval(() => this.updateClock(), 1000)
     this.setupInterconnect()
@@ -205,16 +204,16 @@ export default {
   setupInterconnect() {
     const conn = interconnect.instance()
     this.conn = conn
-    this.addDetail("初始化连接实例…")
+    this.addDetail(this.$t("diagnostics.initializing"))
 
     conn.onopen = (data) => {
-      const reconnected = data && data.isReconnected ? " (重连)" : ""
+      const reconnected = data && data.isReconnected ? this.$t("diagnostics.reconnected") : ""
       console.log(`[interconnect] onopen${reconnected}`)
       this.connected = true
       this.protocolReady = false
       this.protocolRequested = false
       this.showDetail = false
-      this.statusText = "已连接"
+      this.statusText = this.$t("status.connected")
       this.addDetail(`onopen${reconnected}`)
       this.negotiateProtocol()
       this.scheduleHistoryRequest()
@@ -227,7 +226,7 @@ export default {
       this.protocolReady = false
       this.protocolRequested = false
       this.historyRequested = false
-      this.statusText = "已断开"
+      this.statusText = this.$t("status.closed")
       this.addDetail(`onclose code=${code} (${this.describeCode(code)})`)
     }
 
@@ -236,7 +235,7 @@ export default {
       console.log(`[interconnect] onerror code=${code} data=${data && data.data}`)
       this.connected = false
       this.historyRequested = false
-      this.statusText = "连接错误"
+      this.statusText = this.$t("status.connectionError")
       this.addDetail(`onerror code=${code} (${this.describeCode(code)})`)
     }
 
@@ -275,12 +274,12 @@ export default {
         this.connected = s === 1
         if (this.connected) this.showDetail = false
         if (this.connected) this.scheduleHistoryRequest()
-        this.statusText = this.connected ? "已连接" : "未连接"
+      this.statusText = this.connected ? this.$t("status.connected") : this.$t("status.disconnected")
         this.addDetail(`getReadyState status=${s}`)
       },
       fail: (res, code) => {
         this.connected = false
-        this.statusText = "未连接"
+        this.statusText = this.$t("status.disconnected")
         this.addDetail(`getReadyState fail code=${code} (${this.describeCode(code)})`)
       }
     })
@@ -303,7 +302,7 @@ export default {
 
     if (raw == null) {
       this.noteUnknown(data)
-      this.addDetail("onmessage: 无法识别消息数据")
+      this.addDetail(this.$t("diagnostics.unrecognizedData"))
       return
     }
 
@@ -332,15 +331,15 @@ export default {
       this.historyStatus = ""
     } else if (msg && msg.type === "history_error") {
       this.historyStatus = ""
-      this.displayText = `读取失败：${msg.message || "未知错误"}`
+      this.displayText = this.$t("history.readFailed", { message: msg.message || this.$t("error.unknown") })
       this.pageItems = [{ type: "text", content: this.displayText }]
       this.reading = true
       this.scrollContentToTop()
     } else if (msg && msg.type === "not_supported") {
-      this.showToast(msg.message || "不支持上一页")
+      this.showToast(msg.message || this.$t("navigation.previousUnsupported"))
     } else if (msg == null) {
       this.noteUnknown(data)
-      this.addDetail("onmessage: 未知消息格式")
+      this.addDetail(this.$t("diagnostics.unknownMessageFormat"))
     }
   },
 
@@ -377,7 +376,7 @@ export default {
 
   handleProtocolMessage(msg) {
     this.protocolReady = msg.compatible === true && msg.version === this.protocolVersion
-    if (!this.protocolReady) this.showToast("协议版本不兼容")
+    if (!this.protocolReady) this.showToast(this.$t("protocol.incompatible"))
   },
 
   negotiateProtocol() {
@@ -421,7 +420,7 @@ export default {
   imageLoadFailed(index) {
     const item = this.pageItems[index]
     if (!item) return
-    this.pageItems.splice(index, 1, { type: "image", alt: "图片解码失败" })
+    this.pageItems.splice(index, 1, { type: "image", alt: this.$t("image.decodeFailed") })
   },
 
   receivePendingPage(timedOut) {
@@ -434,10 +433,14 @@ export default {
     if (!ready && !timedOut) return
     const items = this.pendingPage.map((item) => {
       if (item.type !== "image") return item
-      if (item.available === false) return Object.assign({}, item, { missing: "图片无法转换" })
+      if (item.available === false) return Object.assign({}, item, { missing: this.$t("image.conversionFailed") })
       if (!complete(item)) {
         const chunk = this.imageChunks[item.id]
-        const missing = `图片未完整接收 ${chunk ? chunk.received : 0}/${chunk ? chunk.total : "?"}B; last unknown: ${this.lastUnknown || "none"}`
+        const missing = this.$t("image.incomplete", {
+          received: chunk ? chunk.received : 0,
+          total: chunk ? chunk.total : "?",
+          lastUnknown: this.lastUnknown || this.$t("diagnostics.none")
+        })
         this.addDetail(missing)
         return Object.assign({}, item, { available: false, missing: missing })
       }
@@ -479,7 +482,7 @@ export default {
       }
       const bytes = item.bytes
       if (!item.available || !bytes) {
-        resolved.push({ type: "image", alt: item.missing || "图片未接收" })
+        resolved.push({ type: "image", alt: item.missing || this.$t("image.notReceived") })
         writeItem(index + 1)
         return
       }
@@ -493,7 +496,7 @@ export default {
           writeItem(index + 1)
         },
         fail: (data, code) => {
-          resolved.push({ type: "image", alt: `图片写入失败 (${code}) ${bytes.length}B` })
+          resolved.push({ type: "image", alt: this.$t("image.writeFailed", { code: code, bytes: bytes.length }) })
           writeItem(index + 1)
         }
       })
@@ -547,7 +550,7 @@ export default {
     this.canSkipImages = false
     this.pageItems = []
     this.displayText = ""
-    this.readingName = "阅读内容"
+    this.readingName = this.$t("reading")
     this.compactHeader = false
     this.historyStatus = ""
     this.sendAction("reset")
@@ -585,16 +588,16 @@ export default {
   openHistory(item) {
     if (!item || !item.id) return
     this.readingName = item.displayName
-    this.historyStatus = `正在打开 ${item.displayName}…`
+    this.historyStatus = this.$t("history.opening", { name: item.displayName })
     this.sendAction("history_open", { id: item.id }, () => {
-      this.historyStatus = "请求发送失败，请重试"
+      this.historyStatus = this.$t("history.requestFailed")
     })
   },
 
   toggleDetail() {
     this.showDetail = !this.showDetail
     if (this.showDetail) {
-      this.addDetail("展开详情，正在诊断…")
+      this.addDetail(this.$t("diagnostics.starting"))
       this.runDiagnosis()
     }
   },
@@ -609,10 +612,10 @@ export default {
 
   runDiagnosis() {
     if (!this.conn) {
-      this.addDetail("diagnosis: 无连接实例")
+      this.addDetail(this.$t("diagnostics.noConnection"))
       return
     }
-    this.addDetail("diagnosis 进行中(timeout=1500ms)…")
+    this.addDetail(this.$t("diagnostics.running"))
     this.conn.diagnosis({
       timeout: 1500,
       success: (res) => {
