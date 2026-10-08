@@ -109,7 +109,7 @@
 <script>
 import interconnect from "@system.interconnect"
 import prompt from "@system.prompt"
-import { decodePayload } from "./codec"
+import { base64ToBytes, decodePayload } from "./codec"
 import { currentTime, truncateName } from "./format"
 import { describeApkStatus as describeStatus, describeCode as describeErrorCode, describeDiagnosis as describeDiagnosisStatus, isApkConnected } from "./status"
 import file from "@system.file"
@@ -123,9 +123,9 @@ export default {
     reading: false,
     canSkipImages: false,
     pendingSkipImages: false,
-    pageSeq: 0,
+    incomingSeq: 1,
     pageItems: [],
-    imageChunks: {},
+    imageFiles: {},
     pendingPage: null,
     pendingPageTimer: null,
     lastUnknown: "",
@@ -360,18 +360,46 @@ export default {
     this.addDetail(`unknown: ${this.lastUnknown}`)
   },
 
-  // Image bytes arrive as a JSON number array (the bridge only delivers strings);
-  // JSON.parse and Uint8Array.set are native, so no per-byte JS runs here.
+  // Image chunks arrive as base64 (the bridge only delivers strings). Each chunk is
+  // appended to the image file with native base64 decoding, so no per-byte JS runs
+  // and the whole image is never held in memory.
   receiveImageChunk(msg) {
-    if (!Array.isArray(msg.data)) return
-    let current = this.imageChunks[msg.id]
-    if (!current || current.total !== msg.total) {
-      current = { total: msg.total, received: 0, bytes: new Uint8Array(msg.total) }
-      this.imageChunks[msg.id] = current
+    if (typeof msg.data !== "string") return
+    let target = this.imageFiles[msg.id]
+    if (!target || msg.offset === 0) {
+      target = {
+        uri: `${this.imageCacheDir}/img-${this.incomingSeq}-${msg.id}.jpg`,
+        total: msg.total, written: 0, error: null, queue: [], busy: false
+      }
+      this.imageFiles[msg.id] = target
     }
-    current.bytes.set(msg.data, msg.offset)
-    current.received += msg.data.length
-    this.receivePendingPage()
+    target.queue.push(msg)
+    this.drainImageWrites(target)
+  },
+
+  drainImageWrites(target) {
+    if (target.busy || target.error != null || target.queue.length === 0) return
+    target.busy = true
+    const chunk = target.queue.shift()
+    // String writes (writeText) turn bytes >= 128 into U+FFFD on the watch, so decode
+    // to a Uint8Array and write it as a buffer.
+    file.writeArrayBuffer({
+      uri: target.uri,
+      buffer: base64ToBytes(chunk.data),
+      append: chunk.offset > 0,
+      success: () => {
+        target.written = chunk.offset + chunk.length
+        target.busy = false
+        this.drainImageWrites(target)
+        this.receivePendingPage()
+      },
+      fail: (data, code) => {
+        target.error = code
+        target.queue = []
+        target.busy = false
+        this.receivePendingPage()
+      }
+    })
   },
 
   handleProtocolMessage(msg) {
@@ -420,88 +448,72 @@ export default {
   imageLoadFailed(index) {
     const item = this.pageItems[index]
     if (!item) return
-    this.pageItems.splice(index, 1, { type: "image", alt: this.$t("image.decodeFailed") })
+    const show = (detail) => {
+      const alt = `${this.$t("image.decodeFailed")} ${detail}`
+      this.addDetail(alt)
+      this.pageItems.splice(index, 1, { type: "image", alt: alt })
+    }
+    // Diagnose the written file: actual vs expected size, and leading bytes (JPEG = ff d8 ff).
+    file.readArrayBuffer({
+      uri: item.src,
+      success: (data) => {
+        const bytes = data.buffer
+        const head = Array.from(bytes.subarray(0, 8)).map((b) => (b < 16 ? "0" : "") + b.toString(16)).join(" ")
+        show(`(${bytes.length}/${item.total}B, ${head})`)
+      },
+      fail: (data, code) => show(`(read ${code})`)
+    })
   },
 
   receivePendingPage(timedOut) {
     if (!this.pendingPage) return
-    const complete = (item) => {
-      const chunk = this.imageChunks[item.id]
-      return chunk && chunk.received >= chunk.total
+    const done = (item) => {
+      const target = this.imageFiles[item.id]
+      return target && (target.error != null || target.written >= target.total)
     }
-    const ready = this.pendingPage.every((item) => item.type !== "image" || item.available === false || complete(item))
+    const ready = this.pendingPage.every((item) => item.type !== "image" || item.available === false || done(item))
     if (!ready && !timedOut) return
-    const items = this.pendingPage.map((item) => {
-      if (item.type !== "image") return item
-      if (item.available === false) return Object.assign({}, item, { missing: this.$t("image.conversionFailed") })
-      if (!complete(item)) {
-        const chunk = this.imageChunks[item.id]
-        const missing = this.$t("image.incomplete", {
-          received: chunk ? chunk.received : 0,
-          total: chunk ? chunk.total : "?",
-          lastUnknown: this.lastUnknown || this.$t("diagnostics.none")
-        })
-        this.addDetail(missing)
-        return Object.assign({}, item, { available: false, missing: missing })
-      }
-      return Object.assign({}, item, { bytes: this.imageChunks[item.id].bytes })
-    })
+    const items = this.pendingPage.map((item) => this.resolvePageItem(item))
     if (this.pendingPageTimer) clearTimeout(this.pendingPageTimer)
     this.pendingPageTimer = null
     this.pendingPage = null
     this.receivePage(items)
   },
 
-  receivePage(items) {
-    items.forEach((item) => {
-      if (item.type === "image") delete this.imageChunks[item.id]
-    })
-    // Image ids are per-page indices; a per-page sequence keeps each file URI unique
-    // so <image> does not keep showing a cached previous image.
-    const seq = ++this.pageSeq
-    const resolved = []
-    const writeItem = (index) => {
-      if (index >= items.length) {
-        this.pageItems = resolved
-        this.displayText = items.filter((item) => item.type === "text").map((item) => item.content).join("")
-        this.canSkipImages = this.pendingSkipImages
-        this.reading = true
-        this.scrollContentToTop()
-        this.sendAction("received")
-        // The new page is shown; remove the previous page's image files.
-        const stale = this.imageUris || []
-        this.imageUris = resolved.filter((item) => item.src).map((item) => item.src)
-        stale.forEach((uri) => file.delete({ uri: uri }))
-        return
-      }
-      const item = items[index]
-      if (item.type !== "image") {
-        if (item.type !== "text" || item.content) resolved.push(item)
-        writeItem(index + 1)
-        return
-      }
-      const bytes = item.bytes
-      if (!item.available || !bytes) {
-        resolved.push({ type: "image", alt: item.missing || this.$t("image.notReceived") })
-        writeItem(index + 1)
-        return
-      }
-      const uri = `${this.imageCacheDir}/img-${seq}-${item.id}.jpg`
-      file.writeArrayBuffer({
-        uri: uri,
-        buffer: bytes,
-        success: () => {
-          // Width/height are computed by the phone; fall back to the old fixed box.
-          resolved.push({ type: "image", src: uri, alt: item.alt || "", width: item.width || 300, height: item.height || 260 })
-          writeItem(index + 1)
-        },
-        fail: (data, code) => {
-          resolved.push({ type: "image", alt: this.$t("image.writeFailed", { code: code, bytes: bytes.length }) })
-          writeItem(index + 1)
-        }
-      })
+  resolvePageItem(item) {
+    if (item.type !== "image") return item
+    if (item.available === false) return { type: "image", alt: this.$t("image.conversionFailed") }
+    const target = this.imageFiles[item.id]
+    if (target && target.error != null) {
+      return { type: "image", alt: this.$t("image.writeFailed", { code: target.error, bytes: target.total }) }
     }
-    writeItem(0)
+    if (!target || target.written < target.total) {
+      const missing = this.$t("image.incomplete", {
+        received: target ? target.written : 0,
+        total: target ? target.total : "?",
+        lastUnknown: this.lastUnknown || this.$t("diagnostics.none")
+      })
+      this.addDetail(missing)
+      return { type: "image", alt: missing }
+    }
+    // Width/height are computed by the phone; fall back to the old fixed box.
+    return { type: "image", src: target.uri, total: target.total, alt: item.alt || "", width: item.width || 300, height: item.height || 260 }
+  },
+
+  receivePage(items) {
+    this.pageItems = items.filter((item) => item.type !== "text" || item.content)
+    this.displayText = items.filter((item) => item.type === "text").map((item) => item.content).join("")
+    this.canSkipImages = this.pendingSkipImages
+    this.reading = true
+    this.scrollContentToTop()
+    this.sendAction("received")
+    // The new page is shown; remove the previous page's image files and start a
+    // new file sequence so <image> never shows a cached image from an old URI.
+    const stale = this.imageUris || []
+    this.imageUris = items.filter((item) => item.src).map((item) => item.src)
+    stale.forEach((uri) => file.delete({ uri: uri }))
+    this.imageFiles = {}
+    this.incomingSeq++
   },
 
   openSettings() {

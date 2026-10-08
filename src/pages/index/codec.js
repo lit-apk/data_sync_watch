@@ -1,3 +1,34 @@
+const BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+const LOOKUP = new Uint8Array(128)
+for (let i = 0; i < BASE64.length; i++) LOOKUP[BASE64.charCodeAt(i)] = i
+
+/**
+ * base64 -> bytes. String-based file writes are lossy on the watch (bytes >= 128
+ * become U+FFFD), so image chunks must be written as a Uint8Array.
+ */
+export function base64ToBytes(text) {
+  let length = text.length
+  while (length > 0 && text.charCodeAt(length - 1) === 61) length-- // strip "=" padding
+  const bytes = new Uint8Array((length * 3) >> 2)
+  let out = 0
+  let i = 0
+  for (; i + 4 <= length; i += 4) {
+    const n = (LOOKUP[text.charCodeAt(i)] << 18) | (LOOKUP[text.charCodeAt(i + 1)] << 12) |
+      (LOOKUP[text.charCodeAt(i + 2)] << 6) | LOOKUP[text.charCodeAt(i + 3)]
+    bytes[out++] = n >> 16
+    bytes[out++] = (n >> 8) & 255
+    bytes[out++] = n & 255
+  }
+  const rest = length - i
+  if (rest >= 2) {
+    const n = (LOOKUP[text.charCodeAt(i)] << 18) | (LOOKUP[text.charCodeAt(i + 1)] << 12) |
+      (rest === 3 ? LOOKUP[text.charCodeAt(i + 2)] << 6 : 0)
+    bytes[out++] = n >> 16
+    if (rest === 3) bytes[out++] = (n >> 8) & 255
+  }
+  return bytes
+}
+
 export function decodePayload(data) {
   if (typeof data === "string") return data
   if (data === undefined || data === null) return null
