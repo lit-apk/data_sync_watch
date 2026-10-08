@@ -98,6 +98,9 @@
 <script>
 import interconnect from "@system.interconnect"
 import prompt from "@system.prompt"
+import { decodePayload } from "./codec"
+import { currentTime, truncateName } from "./format"
+import { describeApkStatus, describeCode, describeDiagnosis, isApkConnected } from "./status"
 
 export default {
   private: {
@@ -147,10 +150,7 @@ export default {
   },
 
   updateClock() {
-    const now = new Date()
-    const hours = String(now.getHours()).padStart(2, "0")
-    const minutes = String(now.getMinutes()).padStart(2, "0")
-    this.currentTime = `${hours}:${minutes}`
+    this.currentTime = currentTime(new Date())
   },
 
   setupInterconnect() {
@@ -232,26 +232,18 @@ export default {
     })
   },
 
-  describeApkStatus(status) {
-    if (status == null) return "未知"
-    const s = String(status).toUpperCase()
-    if (s === "CONNECTED" || status === 0 || status === 1) return "已连接"
-    if (s === "CONNECTING") return "连接中"
-    if (s === "DISCONNECTED" || status === 2) return "未连接"
-    if (s === "UNINSTALLED" || status === 1001) return "未连接(APP未安装)"
-    if (status === 204) return "未连接(超时)"
-    if (status === 1000) return "未连接(其他)"
-    return `状态${status}`
-  },
+  describeApkStatus,
 
-  isApkConnected(status) {
-    const s = String(status).toUpperCase()
-    return s === "CONNECTED" || status === 0 || status === 1
-  },
+  isApkConnected,
 
   handleIncomingMessage(res) {
     const data = res && res.data !== undefined ? res.data : res
-    const raw = this.decodePayload(data)
+    let raw = null
+    try {
+      raw = decodePayload(data)
+    } catch (e) {
+      this.addDetail(`decode bytes error: ${e && e.message ? e.message : e}`)
+    }
 
     if (raw == null) {
       this.addDetail("onmessage: 无法识别消息数据")
@@ -275,7 +267,7 @@ export default {
     } else if (msg && msg.type === "history_list" && Array.isArray(msg.items)) {
       this.historyItems = msg.items.map((item) => ({
         id: String(item.id || ""),
-        displayName: this.truncateName(String(item.name || ""))
+        displayName: truncateName(String(item.name || ""))
       }))
       this.historyStatus = ""
     } else if (msg && msg.type === "history_error") {
@@ -287,59 +279,6 @@ export default {
     } else {
       this.displayText = String(raw)
     }
-  },
-
-  decodePayload(data) {
-    if (typeof data === "string") return data
-    if (data === undefined || data === null) return null
-
-    let bytes = null
-    try {
-      if (typeof ArrayBuffer !== "undefined" && data instanceof ArrayBuffer) {
-        bytes = new Uint8Array(data)
-      } else if (data.buffer && typeof data.byteLength === "number") {
-        bytes = new Uint8Array(data.buffer, data.byteOffset || 0, data.byteLength)
-      } else if (Array.isArray(data)) {
-        bytes = data
-      } else if (typeof data === "object") {
-        if (typeof data.type === "string") return JSON.stringify(data)
-        const keys = Object.keys(data).filter((key) => /^\d+$/.test(key))
-        if (keys.length > 0) {
-          keys.sort((a, b) => Number(a) - Number(b))
-          bytes = keys.map((key) => data[key])
-        }
-      }
-    } catch (e) {
-      this.addDetail(`decode bytes error: ${e && e.message ? e.message : e}`)
-    }
-
-    if (bytes) return this.decodeUtf8(bytes)
-    return typeof data === "object" ? JSON.stringify(data) : String(data)
-  },
-
-  decodeUtf8(bytes) {
-    let text = ""
-    for (let i = 0; i < bytes.length; i++) {
-      const first = bytes[i] & 255
-      if (first < 128) {
-        text += String.fromCharCode(first)
-      } else if (first < 224 && i + 1 < bytes.length) {
-        text += String.fromCharCode(((first & 31) << 6) | (bytes[++i] & 63))
-      } else if (first < 240 && i + 2 < bytes.length) {
-        text += String.fromCharCode(
-          ((first & 15) << 12) | ((bytes[++i] & 63) << 6) | (bytes[++i] & 63)
-        )
-      } else if (i + 3 < bytes.length) {
-        let code =
-          ((first & 7) << 18) |
-          ((bytes[++i] & 63) << 12) |
-          ((bytes[++i] & 63) << 6) |
-          (bytes[++i] & 63)
-        code -= 65536
-        text += String.fromCharCode(55296 + (code >> 10), 56320 + (code & 1023))
-      }
-    }
-    return text
   },
 
   openSettings() {
@@ -424,12 +363,6 @@ export default {
     })
   },
 
-  truncateName(name) {
-    const max = 8
-    if (name.length <= max) return name
-    return `${name.slice(0, max - 3)}...`
-  },
-
   toggleDetail() {
     this.showDetail = !this.showDetail
     if (this.showDetail) {
@@ -464,22 +397,9 @@ export default {
     })
   },
 
-  describeDiagnosis(status) {
-    if (status === 0) return "已连接"
-    if (status === 204) return "连接超时"
-    if (status === 1001) return "手机APP未安装"
-    if (status === 1000) return "其他错误"
-    return "未知"
-  },
+  describeDiagnosis,
 
-  describeCode(code) {
-    if (code === 1000) return "未知错误"
-    if (code === 1001) return "手机APP未安装"
-    if (code === 1006) return "连接断开"
-    if (code === 204) return "连接超时"
-    if (code === 202) return "参数错误"
-    return "未知"
-  },
+  describeCode,
 
   sendAction(action, extra, onFail) {
     if (!this.conn) {
