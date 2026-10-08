@@ -3,31 +3,31 @@ export function isApkConnected(status) {
   return value === "CONNECTED" || status === 0 || status === 1
 }
 
-export function describeApkStatus(status) {
-  if (status == null) return "未知"
+export function describeApkStatus(status, t) {
+  if (status == null) return t("status.unknown")
   const value = String(status).toUpperCase()
-  if (value === "CONNECTED" || status === 0 || status === 1) return "已连接"
-  if (value === "CONNECTING") return "连接中"
-  if (value === "DISCONNECTED" || status === 2) return "未连接"
-  if (value === "UNINSTALLED" || status === 1001) return "未连接(APP未安装)"
-  if (status === 204) return "未连接(超时)"
-  if (status === 1000) return "未连接(其他)"
-  return `状态${status}`
+  if (value === "CONNECTED" || status === 0 || status === 1) return t("status.connected")
+  if (value === "CONNECTING") return t("status.connecting")
+  if (value === "DISCONNECTED" || status === 2) return t("status.disconnected")
+  if (value === "UNINSTALLED" || status === 1001) return t("status.appNotInstalled")
+  if (status === 204) return t("status.timedOut")
+  if (status === 1000) return t("status.other")
+  return t("status.code", { status: status })
 }
 
-export function describeDiagnosis(status) {
-  if (status === 0) return "已连接"
-  if (status === 204) return "连接超时"
-  if (status === 1001) return "手机APP未安装"
-  if (status === 1000) return "其他错误"
-  return "未知"
+export function describeDiagnosis(status, t) {
+  if (status === 0) return t("status.connected")
+  if (status === 204) return t("error.connectionTimedOut")
+  if (status === 1001) return t("error.phoneAppNotInstalled")
+  if (status === 1000) return t("error.other")
+  return t("status.unknown")
 }
 
-export function describeCode(code) {
-  if (code === 1000) return "未知错误"
-  if (code === 1001) return "手机APP未安装"
-  if (code === 1006) return "连接断开"
-  if (code === 204) return "连接超时"
-  if (code === 202) return "参数错误"
-  return "未知"
+export function describeCode(code, t) {
+  if (code === 1000) return t("error.unknown")
+  if (code === 1001) return t("error.phoneAppNotInstalled")
+  if (code === 1006) return t("status.closed")
+  if (code === 204) return t("error.connectionTimedOut")
+  if (code === 202) return t("error.invalidParameters")
+  return t("status.unknown")
 }

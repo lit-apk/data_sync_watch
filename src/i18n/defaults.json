@@ -1,1 +1,27 @@
-{"a":{"b":"default hello"}}
+{
+  "common": { "back": "Back" },
+  "settings": { "title": "Font settings", "fontSize": "Font size: {size}", "preview": "Text preview" },
+  "diagnostics": {
+    "show": "Diagnostic details", "hide": "Hide details", "initializing": "Initializing connection…",
+    "reconnected": " (reconnected)", "unrecognizedData": "onmessage: Unrecognized message data",
+    "starting": "Opening details and running diagnostics…", "noConnection": "diagnosis: No connection instance",
+    "running": "diagnosis in progress (timeout=1500ms)…"
+  },
+  "history": {
+    "title": "Reading history", "readFailed": "Failed to read: {message}",
+    "opening": "Opening {name}…", "requestFailed": "Failed to send request. Please try again."
+  },
+  "navigation": { "previous": "Previous page", "next": "Next section", "previousUnsupported": "Previous page is not supported" },
+  "empty": "No messages yet. Waiting for the phone…",
+  "reading": "Reading content",
+  "status": {
+    "unknown": "Unknown", "connected": "Connected", "connecting": "Connecting", "disconnected": "Not connected",
+    "appNotInstalled": "Not connected (app not installed)", "timedOut": "Not connected (timed out)",
+    "other": "Not connected (other)", "code": "Status {status}", "closed": "Connection closed",
+    "connectionError": "Connection error"
+  },
+  "error": {
+    "unknown": "Unknown error", "connectionTimedOut": "Connection timed out",
+    "phoneAppNotInstalled": "Phone app not installed", "other": "Other error", "invalidParameters": "Invalid parameters"
+  }
+}

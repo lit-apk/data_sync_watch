@@ -1,1 +1,26 @@
-{"a":{"b":"你好"}}
+{
+  "common": { "back": "返回" },
+  "settings": { "title": "字体设置", "fontSize": "字号：{size}", "preview": "文字预览" },
+  "diagnostics": {
+    "show": "诊断详情", "hide": "隐藏详情", "initializing": "初始化连接实例…",
+    "reconnected": " (重连)", "unrecognizedData": "onmessage: 无法识别消息数据",
+    "starting": "展开详情，正在诊断…", "noConnection": "diagnosis: 无连接实例",
+    "running": "diagnosis 进行中(timeout=1500ms)…"
+  },
+  "history": {
+    "title": "阅读历史", "readFailed": "读取失败：{message}",
+    "opening": "正在打开 {name}…", "requestFailed": "请求发送失败，请重试"
+  },
+  "navigation": { "previous": "上一页", "next": "下一段", "previousUnsupported": "不支持上一页" },
+  "empty": "暂无消息，等待手机端发送…",
+  "reading": "阅读内容",
+  "status": {
+    "unknown": "未知", "connected": "已连接", "connecting": "连接中", "disconnected": "未连接",
+    "appNotInstalled": "未连接(APP未安装)", "timedOut": "未连接(超时)",
+    "other": "未连接(其他)", "code": "状态{status}", "closed": "已断开", "connectionError": "连接错误"
+  },
+  "error": {
+    "unknown": "未知错误", "connectionTimedOut": "连接超时", "phoneAppNotInstalled": "手机APP未安装",
+    "other": "其他错误", "invalidParameters": "参数错误"
+  }
+}

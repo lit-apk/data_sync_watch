@@ -1,8 +1,8 @@
 <template>
   <div class="page">
     <div class="settings-page" if="{{ settingsOpen }}">
-      <text class="settings-title">字体设置</text>
-      <text class="settings-value">字号：{{ fontSize }}</text>
+      <text class="settings-title">{{ $t('settings.title') }}</text>
+      <text class="settings-value">{{ $t('settings.fontSize', { size: fontSize }) }}</text>
       <slider
         class="font-slider"
         min="24"
@@ -11,8 +11,8 @@
         value="{{ fontSize }}"
         onchange="handleFontSizeChange"
       ></slider>
-      <text class="font-preview" style="font-size: {{ fontSize }}px;">文字预览</text>
-      <input class="back-button" type="button" value="返回" onclick="closeSettings" />
+      <text class="font-preview" style="font-size: {{ fontSize }}px;">{{ $t('settings.preview') }}</text>
+      <input class="back-button" type="button" value="{{ $t('common.back') }}" onclick="closeSettings" />
     </div>
 
     <scroll class="main-page" scroll-y="true" bounces="true" if="{{ !settingsOpen }}">
@@ -38,7 +38,7 @@
         class="detail-toggle"
         type="button"
         if="{{ !connected }}"
-        value="{{ showDetail ? '隐藏详情' : '诊断详情' }}"
+        value="{{ showDetail ? $t('diagnostics.hide') : $t('diagnostics.show') }}"
         onclick="toggleDetail"
       />
       <div class="detail-panel" if="{{ !connected && showDetail }}">
@@ -57,9 +57,9 @@
               class="empty-text"
               if="{{ !displayText && historyItems.length === 0 }}"
               style="font-size: {{ fontSize }}px;"
-            >{{ emptyText }}</text>
+            >{{ $t('empty') }}</text>
             <div class="history-panel" if="{{ !displayText && historyItems.length > 0 }}">
-              <text class="history-title">阅读历史</text>
+              <text class="history-title">{{ $t('history.title') }}</text>
               <text class="history-status" if="{{ historyStatus }}">{{ historyStatus }}</text>
               <input
                 class="history-item"
@@ -78,13 +78,13 @@
               <input
                 class="action-btn prev"
                 type="button"
-                value="{{ previousLabel }}"
+                value="{{ $t('navigation.previous') }}"
                 onclick="handlePrevious"
               />
               <input
                 class="action-btn next"
                 type="button"
-                value="{{ nextLabel }}"
+                value="{{ $t('navigation.next') }}"
                 onclick="handleNext"
               />
             </div>
@@ -100,17 +100,14 @@ import interconnect from "@system.interconnect"
 import prompt from "@system.prompt"
 import { decodePayload } from "./codec"
 import { currentTime, truncateName } from "./format"
-import { describeApkStatus, describeCode, describeDiagnosis, isApkConnected } from "./status"
+import { describeApkStatus as describeStatus, describeCode as describeErrorCode, describeDiagnosis as describeDiagnosisStatus, isApkConnected } from "./status"
 
 export default {
   private: {
     conn: null,
     displayText: "",
     connected: false,
-    statusText: "未连接",
-    emptyText: "暂无消息，等待手机端发送…",
-    previousLabel: "上一页",
-    nextLabel: "下一段",
+    statusText: "",
     showDetail: false,
     detailLines: [],
     settingsOpen: false,
@@ -118,13 +115,15 @@ export default {
     historyItems: [],
     historyStatus: "",
     historyRequested: false,
-    readingName: "阅读内容",
+    readingName: "",
     compactHeader: false,
     currentTime: "00:00",
     clockTimer: null
   },
 
   onReady() {
+    this.statusText = this.$t("status.disconnected")
+    this.readingName = this.$t("reading")
     this.updateClock()
     this.clockTimer = setInterval(() => this.updateClock(), 1000)
     this.setupInterconnect()
@@ -156,14 +155,14 @@ export default {
   setupInterconnect() {
     const conn = interconnect.instance()
     this.conn = conn
-    this.addDetail("初始化连接实例…")
+    this.addDetail(this.$t("diagnostics.initializing"))
 
     conn.onopen = (data) => {
-      const reconnected = data && data.isReconnected ? " (重连)" : ""
+      const reconnected = data && data.isReconnected ? this.$t("diagnostics.reconnected") : ""
       console.log(`[interconnect] onopen${reconnected}`)
       this.connected = true
       this.showDetail = false
-      this.statusText = "已连接"
+      this.statusText = this.$t("status.connected")
       this.addDetail(`onopen${reconnected}`)
       this.scheduleHistoryRequest()
     }
@@ -173,7 +172,7 @@ export default {
       console.log(`[interconnect] onclose code=${code} data=${data && data.data}`)
       this.connected = false
       this.historyRequested = false
-      this.statusText = "已断开"
+      this.statusText = this.$t("status.closed")
       this.addDetail(`onclose code=${code} (${this.describeCode(code)})`)
     }
 
@@ -182,7 +181,7 @@ export default {
       console.log(`[interconnect] onerror code=${code} data=${data && data.data}`)
       this.connected = false
       this.historyRequested = false
-      this.statusText = "连接错误"
+      this.statusText = this.$t("status.connectionError")
       this.addDetail(`onerror code=${code} (${this.describeCode(code)})`)
     }
 
@@ -221,18 +220,20 @@ export default {
         this.connected = s === 1
         if (this.connected) this.showDetail = false
         if (this.connected) this.scheduleHistoryRequest()
-        this.statusText = this.connected ? "已连接" : "未连接"
+      this.statusText = this.connected ? this.$t("status.connected") : this.$t("status.disconnected")
         this.addDetail(`getReadyState status=${s}`)
       },
       fail: (res, code) => {
         this.connected = false
-        this.statusText = "未连接"
+        this.statusText = this.$t("status.disconnected")
         this.addDetail(`getReadyState fail code=${code} (${this.describeCode(code)})`)
       }
     })
   },
 
-  describeApkStatus,
+  describeApkStatus(status) {
+    return describeStatus(status, (key, args) => this.$t(key, args))
+  },
 
   isApkConnected,
 
@@ -246,7 +247,7 @@ export default {
     }
 
     if (raw == null) {
-      this.addDetail("onmessage: 无法识别消息数据")
+      this.addDetail(this.$t("diagnostics.unrecognizedData"))
       return
     }
 
@@ -272,10 +273,10 @@ export default {
       this.historyStatus = ""
     } else if (msg && msg.type === "history_error") {
       this.historyStatus = ""
-      this.displayText = `读取失败：${msg.message || "未知错误"}`
+      this.displayText = this.$t("history.readFailed", { message: msg.message || this.$t("error.unknown") })
       this.scrollContentToTop()
     } else if (msg && msg.type === "not_supported") {
-      this.showToast(msg.message || "不支持上一页")
+      this.showToast(msg.message || this.$t("navigation.previousUnsupported"))
     } else {
       this.displayText = String(raw)
     }
@@ -324,7 +325,7 @@ export default {
 
   returnToInitial() {
     this.displayText = ""
-    this.readingName = "阅读内容"
+    this.readingName = this.$t("reading")
     this.compactHeader = false
     this.historyStatus = ""
     this.sendAction("reset")
@@ -357,16 +358,16 @@ export default {
   openHistory(item) {
     if (!item || !item.id) return
     this.readingName = item.displayName
-    this.historyStatus = `正在打开 ${item.displayName}…`
+    this.historyStatus = this.$t("history.opening", { name: item.displayName })
     this.sendAction("history_open", { id: item.id }, () => {
-      this.historyStatus = "请求发送失败，请重试"
+      this.historyStatus = this.$t("history.requestFailed")
     })
   },
 
   toggleDetail() {
     this.showDetail = !this.showDetail
     if (this.showDetail) {
-      this.addDetail("展开详情，正在诊断…")
+      this.addDetail(this.$t("diagnostics.starting"))
       this.runDiagnosis()
     }
   },
@@ -381,10 +382,10 @@ export default {
 
   runDiagnosis() {
     if (!this.conn) {
-      this.addDetail("diagnosis: 无连接实例")
+      this.addDetail(this.$t("diagnostics.noConnection"))
       return
     }
-    this.addDetail("diagnosis 进行中(timeout=1500ms)…")
+    this.addDetail(this.$t("diagnostics.running"))
     this.conn.diagnosis({
       timeout: 1500,
       success: (res) => {
@@ -397,9 +398,13 @@ export default {
     })
   },
 
-  describeDiagnosis,
+  describeDiagnosis(status) {
+    return describeDiagnosisStatus(status, (key, args) => this.$t(key, args))
+  },
 
-  describeCode,
+  describeCode(code) {
+    return describeErrorCode(code, (key, args) => this.$t(key, args))
+  },
 
   sendAction(action, extra, onFail) {
     if (!this.conn) {
