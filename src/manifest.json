@@ -17,6 +17,12 @@
     },
     {
       "name": "system.prompt"
+    },
+    {
+      "name": "system.file"
+    },
+    {
+      "name": "system.app"
     }
   ],
   "config": {

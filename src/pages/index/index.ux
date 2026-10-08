@@ -1,8 +1,8 @@
 <template>
   <div class="page">
     <div class="settings-page" if="{{ settingsOpen }}">
-      <text class="settings-title">{{ $t('settings.title') }}</text>
-      <text class="settings-value">{{ $t('settings.fontSize', { size: fontSize }) }}</text>
+      <text class="settings-title">字体设置</text>
+      <text class="settings-value">字号：{{ fontSize }}</text>
       <slider
         class="font-slider"
         min="24"
@@ -11,8 +11,8 @@
         value="{{ fontSize }}"
         onchange="handleFontSizeChange"
       ></slider>
-      <text class="font-preview" style="font-size: {{ fontSize }}px;">{{ $t('settings.preview') }}</text>
-      <input class="back-button" type="button" value="{{ $t('common.back') }}" onclick="closeSettings" />
+      <text class="font-preview" style="font-size: {{ fontSize }}px;">文字预览</text>
+      <input class="back-button" type="button" value="返回" onclick="closeSettings" />
     </div>
 
     <scroll class="main-page" scroll-y="true" bounces="true" if="{{ !settingsOpen }}">
@@ -22,7 +22,7 @@
         <input
           class="round-button back-button-small"
           type="button"
-          if="{{ connected && displayText }}"
+          if="{{ connected && reading }}"
           value="‹"
           onclick="returnToInitial"
         />
@@ -38,7 +38,7 @@
         class="detail-toggle"
         type="button"
         if="{{ !connected }}"
-        value="{{ showDetail ? $t('diagnostics.hide') : $t('diagnostics.show') }}"
+        value="{{ showDetail ? '隐藏详情' : '诊断详情' }}"
         onclick="toggleDetail"
       />
       <div class="detail-panel" if="{{ !connected && showDetail }}">
@@ -55,11 +55,11 @@
           <div class="item">
             <text
               class="empty-text"
-              if="{{ !displayText && historyItems.length === 0 }}"
+              if="{{ !reading && historyItems.length === 0 }}"
               style="font-size: {{ fontSize }}px;"
-            >{{ $t('empty') }}</text>
-            <div class="history-panel" if="{{ !displayText && historyItems.length > 0 }}">
-              <text class="history-title">{{ $t('history.title') }}</text>
+            >{{ emptyText }}</text>
+            <div class="history-panel" if="{{ !reading && historyItems.length > 0 }}">
+              <text class="history-title">阅读历史</text>
               <text class="history-status" if="{{ historyStatus }}">{{ historyStatus }}</text>
               <input
                 class="history-item"
@@ -70,21 +70,25 @@
               />
             </div>
           </div>
-          <div class="item message" onclick="handleReadingTap">
-            <text class="message-text" style="font-size: {{ fontSize }}px;">{{ displayText }}</text>
+          <div class="item message" if="{{ reading }}" onclick="handleReadingTap">
+            <div class="page-item" for="{{ pageItems }}">
+              <image class="reading-image" if="{{ $item.type === 'image' && $item.src }}" src="{{ $item.src }}" onerror="imageLoadFailed($idx)" />
+              <text class="image-alt" if="{{ $item.type === 'image' && !$item.src }}">{{ $item.alt }}</text>
+              <text class="message-text" if="{{ $item.type === 'text' }}" style="font-size: {{ fontSize }}px;">{{ $item.content }}</text>
+            </div>
           </div>
-          <div class="item" if="{{ displayText }}">
+          <div class="item" if="{{ reading }}">
             <div class="actions-row">
               <input
                 class="action-btn prev"
                 type="button"
-                value="{{ $t('navigation.previous') }}"
+                value="{{ previousLabel }}"
                 onclick="handlePrevious"
               />
               <input
                 class="action-btn next"
                 type="button"
-                value="{{ $t('navigation.next') }}"
+                value="{{ nextLabel }}"
                 onclick="handleNext"
               />
             </div>
@@ -101,13 +105,28 @@ import prompt from "@system.prompt"
 import { decodePayload } from "./codec"
 import { currentTime, truncateName } from "./format"
 import { describeApkStatus as describeStatus, describeCode as describeErrorCode, describeDiagnosis as describeDiagnosisStatus, isApkConnected } from "./status"
+import file from "@system.file"
+import app from "@system.app"
 
 export default {
   private: {
     conn: null,
     displayText: "",
+    reading: false,
+    pageSeq: 0,
+    pageItems: [],
+    imageChunks: {},
+    pendingPage: null,
+    pendingPageTimer: null,
+    lastUnknown: "",
     connected: false,
-    statusText: "",
+    protocolReady: false,
+    protocolRequested: false,
+    protocolVersion: "1.0",
+    statusText: "未连接",
+    emptyText: "暂无消息，等待手机端发送…",
+    previousLabel: "上一页",
+    nextLabel: "下一段",
     showDetail: false,
     detailLines: [],
     settingsOpen: false,
@@ -115,18 +134,39 @@ export default {
     historyItems: [],
     historyStatus: "",
     historyRequested: false,
-    readingName: "",
+    readingName: "阅读内容",
     compactHeader: false,
+    imageCacheDir: "",
+    imageUris: [],
+    pendingImage: null,
     currentTime: "00:00",
     clockTimer: null
   },
 
   onReady() {
-    this.statusText = this.$t("status.disconnected")
-    this.readingName = this.$t("reading")
+    const info = app.getInfo()
+    this.imageCacheDir = `internal://cache/${info.packageName}/caches/img`
+    this.prepareImageCache()
     this.updateClock()
     this.clockTimer = setInterval(() => this.updateClock(), 1000)
     this.setupInterconnect()
+  },
+
+  prepareImageCache() {
+    file.access({
+      uri: this.imageCacheDir,
+      success: () => this.clearImageCache(),
+      fail: () => file.mkdir({ uri: this.imageCacheDir, recursive: true })
+    })
+  },
+
+  clearImageCache() {
+    file.rmdir({
+      uri: this.imageCacheDir,
+      recursive: true,
+      complete: () => file.mkdir({ uri: this.imageCacheDir, recursive: true })
+    })
+    this.imageUris = []
   },
 
   onShow() {
@@ -155,15 +195,18 @@ export default {
   setupInterconnect() {
     const conn = interconnect.instance()
     this.conn = conn
-    this.addDetail(this.$t("diagnostics.initializing"))
+    this.addDetail("初始化连接实例…")
 
     conn.onopen = (data) => {
-      const reconnected = data && data.isReconnected ? this.$t("diagnostics.reconnected") : ""
+      const reconnected = data && data.isReconnected ? " (重连)" : ""
       console.log(`[interconnect] onopen${reconnected}`)
       this.connected = true
+      this.protocolReady = false
+      this.protocolRequested = false
       this.showDetail = false
-      this.statusText = this.$t("status.connected")
+      this.statusText = "已连接"
       this.addDetail(`onopen${reconnected}`)
+      this.negotiateProtocol()
       this.scheduleHistoryRequest()
     }
 
@@ -171,8 +214,10 @@ export default {
       const code = data && data.code
       console.log(`[interconnect] onclose code=${code} data=${data && data.data}`)
       this.connected = false
+      this.protocolReady = false
+      this.protocolRequested = false
       this.historyRequested = false
-      this.statusText = this.$t("status.closed")
+      this.statusText = "已断开"
       this.addDetail(`onclose code=${code} (${this.describeCode(code)})`)
     }
 
@@ -181,7 +226,7 @@ export default {
       console.log(`[interconnect] onerror code=${code} data=${data && data.data}`)
       this.connected = false
       this.historyRequested = false
-      this.statusText = this.$t("status.connectionError")
+      this.statusText = "连接错误"
       this.addDetail(`onerror code=${code} (${this.describeCode(code)})`)
     }
 
@@ -220,12 +265,12 @@ export default {
         this.connected = s === 1
         if (this.connected) this.showDetail = false
         if (this.connected) this.scheduleHistoryRequest()
-      this.statusText = this.connected ? this.$t("status.connected") : this.$t("status.disconnected")
+        this.statusText = this.connected ? "已连接" : "未连接"
         this.addDetail(`getReadyState status=${s}`)
       },
       fail: (res, code) => {
         this.connected = false
-        this.statusText = this.$t("status.disconnected")
+        this.statusText = "未连接"
         this.addDetail(`getReadyState fail code=${code} (${this.describeCode(code)})`)
       }
     })
@@ -247,11 +292,10 @@ export default {
     }
 
     if (raw == null) {
-      this.addDetail(this.$t("diagnostics.unrecognizedData"))
+      this.noteUnknown(data)
+      this.addDetail("onmessage: 无法识别消息数据")
       return
     }
-
-    console.log(`[interconnect] onmessage: ${raw}`)
 
     let msg = null
     try {
@@ -260,11 +304,16 @@ export default {
       msg = null
     }
 
-    if (msg && msg.type === "text" && typeof msg.content === "string") {
-      this.historyStatus = ""
-      this.displayText = msg.content
-      this.scrollContentToTop()
-      this.sendAction("received")
+    if (msg && msg.type === "image_chunk") {
+      this.receiveImageChunk(msg)
+      return
+    }
+    console.log(`[interconnect] onmessage: ${raw.length > 200 ? raw.slice(0, 200) + "..." : raw}`)
+
+    if (msg && msg.type === "protocol") {
+      this.handleProtocolMessage(msg)
+    } else if (msg && (msg.type === "page" || msg.type === "text")) {
+      this.handlePageMessage(msg)
     } else if (msg && msg.type === "history_list" && Array.isArray(msg.items)) {
       this.historyItems = msg.items.map((item) => ({
         id: String(item.id || ""),
@@ -273,13 +322,156 @@ export default {
       this.historyStatus = ""
     } else if (msg && msg.type === "history_error") {
       this.historyStatus = ""
-      this.displayText = this.$t("history.readFailed", { message: msg.message || this.$t("error.unknown") })
+      this.displayText = `读取失败：${msg.message || "未知错误"}`
+      this.pageItems = [{ type: "text", content: this.displayText }]
+      this.reading = true
       this.scrollContentToTop()
     } else if (msg && msg.type === "not_supported") {
-      this.showToast(msg.message || this.$t("navigation.previousUnsupported"))
-    } else {
-      this.displayText = String(raw)
+      this.showToast(msg.message || "不支持上一页")
+    } else if (msg == null) {
+      this.noteUnknown(data)
+      this.addDetail("onmessage: 未知消息格式")
     }
+  },
+
+  noteUnknown(data) {
+    let head = ""
+    try {
+      if (typeof data === "string") {
+        head = Array.from(data.slice(0, 8)).map((c) => c.charCodeAt(0)).join(",")
+      } else if (data && typeof data === "object") {
+        head = Array.from({ length: 8 }, (_, i) => data[i]).join(",")
+      }
+    } catch (e) {
+      head = "?"
+    }
+    const ctor = data && data.constructor ? data.constructor.name : ""
+    const len = data && (data.length !== undefined ? data.length : data.byteLength)
+    this.lastUnknown = `${typeof data}/${ctor} len=${len} [${head}]`
+    this.addDetail(`unknown: ${this.lastUnknown}`)
+  },
+
+  // Image bytes arrive as a JSON number array (the bridge only delivers strings);
+  // JSON.parse and Uint8Array.set are native, so no per-byte JS runs here.
+  receiveImageChunk(msg) {
+    if (!Array.isArray(msg.data)) return
+    let current = this.imageChunks[msg.id]
+    if (!current || current.total !== msg.total) {
+      current = { total: msg.total, received: 0, bytes: new Uint8Array(msg.total) }
+      this.imageChunks[msg.id] = current
+    }
+    current.bytes.set(msg.data, msg.offset)
+    current.received += msg.data.length
+    this.receivePendingPage()
+  },
+
+  handleProtocolMessage(msg) {
+    this.protocolReady = msg.compatible === true && msg.version === this.protocolVersion
+    if (!this.protocolReady) this.showToast("协议版本不兼容")
+  },
+
+  negotiateProtocol() {
+    if (this.protocolRequested) return
+    this.protocolRequested = true
+    this.sendAction("protocol", { version: this.protocolVersion })
+  },
+
+  handlePageMessage(msg) {
+    if (msg.type === "page" && Array.isArray(msg.items)) {
+      this.pendingPage = msg.items
+      if (this.pendingPageTimer) clearTimeout(this.pendingPageTimer)
+      this.pendingPageTimer = setTimeout(() => this.receivePendingPage(true), 5000)
+      this.receivePendingPage()
+      return
+    }
+    if (msg.type === "text" && typeof msg.content === "string") {
+      this.historyStatus = ""
+      this.pageItems = [{ type: "text", content: msg.content }]
+      this.displayText = msg.content
+      this.reading = true
+      this.scrollContentToTop()
+      this.sendAction("received")
+    }
+  },
+
+  imageLoadFailed(index) {
+    const item = this.pageItems[index]
+    if (!item) return
+    this.pageItems.splice(index, 1, { type: "image", alt: "图片解码失败" })
+  },
+
+  receivePendingPage(timedOut) {
+    if (!this.pendingPage) return
+    const complete = (item) => {
+      const chunk = this.imageChunks[item.id]
+      return chunk && chunk.received >= chunk.total
+    }
+    const ready = this.pendingPage.every((item) => item.type !== "image" || complete(item))
+    if (!ready && !timedOut) return
+    const items = this.pendingPage.map((item) => {
+      if (item.type !== "image") return item
+      if (!complete(item)) {
+        const chunk = this.imageChunks[item.id]
+        const missing = `图片未完整接收 ${chunk ? chunk.received : 0}/${chunk ? chunk.total : "?"}B; last unknown: ${this.lastUnknown || "none"}`
+        this.addDetail(missing)
+        return Object.assign({}, item, { available: false, missing: missing })
+      }
+      return Object.assign({}, item, { bytes: this.imageChunks[item.id].bytes })
+    })
+    if (this.pendingPageTimer) clearTimeout(this.pendingPageTimer)
+    this.pendingPageTimer = null
+    this.pendingPage = null
+    this.receivePage(items)
+  },
+
+  receivePage(items) {
+    items.forEach((item) => {
+      if (item.type === "image") delete this.imageChunks[item.id]
+    })
+    // Image ids are per-page indices; a per-page sequence keeps each file URI unique
+    // so <image> does not keep showing a cached previous image.
+    const seq = ++this.pageSeq
+    const resolved = []
+    const writeItem = (index) => {
+      if (index >= items.length) {
+        this.pageItems = resolved
+        this.displayText = items.filter((item) => item.type === "text").map((item) => item.content).join("")
+        this.reading = true
+        this.scrollContentToTop()
+        this.sendAction("received")
+        // The new page is shown; remove the previous page's image files.
+        const stale = this.imageUris || []
+        this.imageUris = resolved.filter((item) => item.src).map((item) => item.src)
+        stale.forEach((uri) => file.delete({ uri: uri }))
+        return
+      }
+      const item = items[index]
+      if (item.type !== "image") {
+        if (item.type !== "text" || item.content) resolved.push(item)
+        writeItem(index + 1)
+        return
+      }
+      const bytes = item.bytes
+      if (!item.available || !bytes) {
+        resolved.push({ type: "image", alt: item.missing || "图片未接收" })
+        writeItem(index + 1)
+        return
+      }
+      const uri = `${this.imageCacheDir}/img-${seq}-${item.id}.jpg`
+      file.writeArrayBuffer({
+        uri: uri,
+        buffer: bytes,
+        success: () => {
+          resolved.push({ type: "image", src: uri, alt: item.alt || "" })
+          writeItem(index + 1)
+        },
+        fail: (data, code) => {
+          resolved.push({ type: "image", alt: `图片写入失败 (${code}) ${bytes.length}B` })
+          writeItem(index + 1)
+        }
+      })
+    }
+    writeItem(0)
   },
 
   openSettings() {
@@ -305,7 +497,7 @@ export default {
   },
 
   handleReadingTap(e) {
-    if (!this.displayText || !e) return
+    if (!this.reading || !e) return
     if (e.clientY <= 120) {
       this.compactHeader = false
       return
@@ -319,13 +511,15 @@ export default {
   },
 
   handleContentScroll(e) {
-    if (!this.displayText) return
+    if (!this.reading) return
     this.compactHeader = !!e && e.scrollY > 8
   },
 
   returnToInitial() {
+    this.reading = false
+    this.pageItems = []
     this.displayText = ""
-    this.readingName = this.$t("reading")
+    this.readingName = "阅读内容"
     this.compactHeader = false
     this.historyStatus = ""
     this.sendAction("reset")
@@ -358,16 +552,16 @@ export default {
   openHistory(item) {
     if (!item || !item.id) return
     this.readingName = item.displayName
-    this.historyStatus = this.$t("history.opening", { name: item.displayName })
+    this.historyStatus = `正在打开 ${item.displayName}…`
     this.sendAction("history_open", { id: item.id }, () => {
-      this.historyStatus = this.$t("history.requestFailed")
+      this.historyStatus = "请求发送失败，请重试"
     })
   },
 
   toggleDetail() {
     this.showDetail = !this.showDetail
     if (this.showDetail) {
-      this.addDetail(this.$t("diagnostics.starting"))
+      this.addDetail("展开详情，正在诊断…")
       this.runDiagnosis()
     }
   },
@@ -382,10 +576,10 @@ export default {
 
   runDiagnosis() {
     if (!this.conn) {
-      this.addDetail(this.$t("diagnostics.noConnection"))
+      this.addDetail("diagnosis: 无连接实例")
       return
     }
-    this.addDetail(this.$t("diagnostics.running"))
+    this.addDetail("diagnosis 进行中(timeout=1500ms)…")
     this.conn.diagnosis({
       timeout: 1500,
       success: (res) => {
@@ -590,6 +784,19 @@ export default {
 .message-text {
   color: #ffffff;
   width: 100%;
+}
+
+.reading-image {
+  width: 100%;
+  height: 260px;
+  margin-bottom: 16px;
+  object-fit: contain;
+}
+
+.image-alt {
+  font-size: 18px;
+  color: #777777;
+  margin-bottom: 12px;
 }
 
 .empty-text {
