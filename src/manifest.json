@@ -23,6 +23,9 @@
     },
     {
       "name": "system.app"
+    },
+    {
+      "name": "system.device"
     }
   ],
   "config": {
