@@ -11,7 +11,7 @@
     "title": "Reading history", "readFailed": "Failed to read: {message}",
     "opening": "Opening {name}…", "requestFailed": "Failed to send request. Please try again."
   },
-  "navigation": { "previous": "Previous page", "next": "Next section", "previousUnsupported": "Previous page is not supported", "skipImages": "Skip to next text" },
+  "navigation": { "previous": "Previous page", "next": "Next page", "previousUnsupported": "Previous page is not supported", "skipImages": "Skip to next text" },
   "protocol": { "incompatible": "Incompatible protocol version" },
   "image": {
     "decodeFailed": "Failed to decode image", "conversionFailed": "Failed to convert image",
