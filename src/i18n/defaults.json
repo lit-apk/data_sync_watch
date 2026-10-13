@@ -1,5 +1,5 @@
 {
-  "common": { "back": "Back" },
+  "common": { "back": "Back", "close": "Close" },
   "settings": { "title": "Font settings", "fontSize": "Font size: {size}", "preview": "Text preview" },
   "diagnostics": {
     "show": "Diagnostic details", "hide": "Hide details", "initializing": "Initializing connection…",

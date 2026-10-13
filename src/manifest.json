@@ -37,6 +37,9 @@
     "pages": {
       "pages/index": {
         "component": "index"
+      },
+      "pages/zoom": {
+        "component": "zoom"
       }
     }
   },

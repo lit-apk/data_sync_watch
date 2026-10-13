@@ -1,5 +1,5 @@
 {
-  "common": { "back": "返回" },
+  "common": { "back": "返回", "close": "关闭" },
   "settings": { "title": "字体设置", "fontSize": "字号：{size}", "preview": "文字预览" },
   "diagnostics": {
     "show": "诊断详情", "hide": "隐藏详情", "initializing": "初始化连接实例…",

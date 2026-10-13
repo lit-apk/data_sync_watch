@@ -76,7 +76,7 @@
                    reduced bitmap (reduce factor / size limit); object-fit: contain scales it to
                    exactly fill the box. Inline because the class rule was not reliably applied
                    and the default "cover" crops. -->
-              <image if="{{ $item.type === 'image' && $item.src }}" src="{{ $item.src }}" style="width: {{ $item.width }}px; height: {{ $item.height }}px; object-fit: contain;" oncomplete="imageLoaded($idx)" onerror="imageLoadFailed($idx)" />
+              <image if="{{ $item.type === 'image' && $item.src }}" src="{{ $item.src }}" style="width: {{ $item.width }}px; height: {{ $item.height }}px; object-fit: contain;" oncomplete="imageLoaded($idx)" onerror="imageLoadFailed($idx)" onclick="openZoom($idx)" />
               <text class="image-alt" if="{{ $item.type === 'image' && !$item.src }}">{{ $item.alt }}</text>
               <text class="message-text" if="{{ $item.type === 'text' }}" style="font-size: {{ fontSize }}px;">{{ $item.content }}</text>
             </div>
@@ -116,6 +116,7 @@
 <script>
 import interconnect from "@system.interconnect"
 import prompt from "@system.prompt"
+import router from "@system.router"
 import { base64ToBytes, decodePayload } from "./codec"
 import { currentTime, truncateName } from "./format"
 import { describeApkStatus as describeStatus, describeCode as describeErrorCode, describeDiagnosis as describeDiagnosisStatus, isApkConnected } from "./status"
@@ -651,6 +652,15 @@ export default {
   handleSkipImages() {
     this.canSkipImages = false
     this.sendAction("skip_images")
+  },
+
+  openZoom(index) {
+    const item = this.pageItems[index]
+    if (!item || item.type !== "image" || !item.src) return
+    router.push({
+      uri: "pages/zoom",
+      params: { imageUri: item.src, baseWidth: item.width, baseHeight: item.height }
+    })
   },
 
   showToast(message) {

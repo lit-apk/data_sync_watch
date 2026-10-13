@@ -1,0 +1,120 @@
+<template>
+  <div class="page">
+    <scroll scroll-y="{{true}}" scroll-x="{{true}}" class="viewer">
+      <image src="{{ imageUri }}" class="image" style="width: {{ imgWidth }}px; height: {{ imgHeight }}px;" />
+    </scroll>
+    <div class="overlay">
+      <input class="btn" type="button" value="−" onclick="zoomOut" />
+      <text class="percent">{{ scale }}%</text>
+      <input class="btn" type="button" value="+" onclick="zoomIn" />
+    </div>
+    <input class="back" type="button" value="{{ $t('common.back') }}" onclick="back" />
+  </div>
+</template>
+
+<script>
+import router from "@system.router"
+
+export default {
+  protected: {
+    imageUri: "",
+    baseWidth: 336,
+    baseHeight: 410
+  },
+  private: {
+    scale: 100,
+    // to be overwriten below
+    imgWidth: 336,
+    imgHeight: 410
+  },
+  onInit() {
+    this.imageUri = this.imageUri || ""
+    this.imgWidth = this.baseWidth
+    this.imgHeight = this.baseHeight
+  },
+  zoomIn() {
+    if (this.scale < 300) {
+      this.scale += 25
+      this.updateSize()
+    }
+  },
+  zoomOut() {
+    if (this.scale > 25) {
+      this.scale -= 25
+      this.updateSize()
+    }
+  },
+  updateSize() {
+    const f = this.scale / 100
+    this.imgWidth = Math.round(this.baseWidth * f)
+    this.imgHeight = Math.round(this.baseHeight * f)
+  },
+  back() {
+    router.back()
+  }
+}
+</script>
+
+<style>
+.page {
+  width: 100%;
+  height: 100%;
+  background-color: #000000;
+}
+
+.viewer {
+  position: absolute;
+  left: 0px;
+  top: 0px;
+  width: 100%;
+  height: 410px;
+}
+
+.image {
+  object-fit: contain;
+  background-color: #000000;
+}
+
+.overlay {
+  position: absolute;
+  left: 55px;
+  top: 340px;
+  width: 80%;
+  height: 70px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  background-color: #55333366;
+  border-radius: 16px;
+}
+
+.btn {
+  width: 60px;
+  height: 50px;
+  border-radius: 25px;
+  font-size: 28px;
+  color: #ffffff;
+  text-align: center;
+  background-color: #99333333;
+}
+
+.percent {
+  width: 80px;
+  font-size: 24px;
+  color: #ffffff;
+  text-align: center;
+}
+
+.back {
+  position: absolute;
+  left: 30px;
+  top: 420px;
+  width: 100%;
+  height: 60px;
+  border-radius: 30px;
+  font-size: 26px;
+  color: #ffffff;
+  text-align: center;
+  background-color: #444444;
+}
+</style>
