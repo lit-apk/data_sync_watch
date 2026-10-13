@@ -118,7 +118,7 @@ import interconnect from "@system.interconnect"
 import prompt from "@system.prompt"
 import router from "@system.router"
 import { base64ToBytes, decodePayload } from "./codec"
-import { currentTime, truncateName } from "./format"
+import { currentTime, toDisplayName } from "./format"
 import { describeApkStatus as describeStatus, describeCode as describeErrorCode, describeDiagnosis as describeDiagnosisStatus, isApkConnected } from "./status"
 import file from "@system.file"
 import app from "@system.app"
@@ -348,8 +348,8 @@ export default {
       this.handlePageMessage(msg)
     } else if (msg && msg.type === "history_list" && Array.isArray(msg.items)) {
       this.historyItems = msg.items.map((item) => ({
-        id: String(item.id || ""),
-        displayName: truncateName(String(item.name || ""))
+        id: String(item.id) || "",
+        displayName: toDisplayName(String(item.name) || "")
       }))
       this.historyStatus = ""
     } else if (msg && msg.type === "history_error") {
